@@ -43,7 +43,53 @@
             font-size: 12px;
             color: #666;
         }
+
+        /* 📌 초점 개선: 영상 비율 왜곡 제거 */
+        .video-container {
+            width: 100%;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 15px;
+            display: none;
+            max-height: 500px;
+        }
+
+        /* 📌 영상이 뭉개지지 않도록 contain 적용 */
+        video {
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+            background: #000;
+        }
+
+        .video-label {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #999;
+            font-size: 12px;
+            text-align: center;
+            pointer-events: none;
+        }
         
+        canvas {
+            display: none;
+        }
+        
+        .captured-image {
+            width: 100%;
+            max-width: 100%;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        
+        .captured-image.show {
+            display: block;
+        }
+
         .message {
             padding: 12px;
             margin-bottom: 15px;
@@ -74,98 +120,7 @@
             border-left: 4px solid #04844b;
             color: #04844b;
         }
-        
-        .video-container {
-            position: relative;
-            width: 100%;
-            aspect-ratio: 4/3;
-            background: #000;
-            border-radius: 8px;
-            overflow: hidden;
-            margin-bottom: 15px;
-            display: none;
-        }
-        
-        .video-container.show {
-            display: block;
-        }
-        
-        video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        .video-label {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #999;
-            font-size: 12px;
-            text-align: center;
-            pointer-events: none;
-        }
-        
-        canvas {
-            display: none;
-        }
-        
-        .captured-image {
-            width: 100%;
-            max-width: 100%;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            display: none;
-        }
-        
-        .captured-image.show {
-            display: block;
-        }
-        
-        .confidence-container {
-            margin-bottom: 15px;
-            display: none;
-        }
-        
-        .confidence-container.show {
-            display: block;
-        }
-        
-        .confidence-label {
-            font-size: 12px;
-            font-weight: bold;
-            margin-bottom: 8px;
-            color: #333;
-        }
-        
-        .progress-bar {
-            width: 100%;
-            height: 20px;
-            background: #e8e8e8;
-            border-radius: 10px;
-            overflow: hidden;
-            margin-bottom: 8px;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #0070d2, #0077cc);
-            transition: width 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 10px;
-            font-weight: bold;
-        }
-        
-        .confidence-percent {
-            text-align: center;
-            font-size: 12px;
-            color: #666;
-        }
-        
+
         .button-group {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -182,69 +137,20 @@
             cursor: pointer;
             transition: all 0.3s ease;
             min-height: 44px;
-            text-align: center;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
         
-        .btn-brand {
-            background: #0070d2;
-            color: white;
-        }
-        
-        .btn-brand:hover {
-            background: #0057b8;
-        }
-        
-        .btn-brand:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        
-        .btn-success {
-            background: #04844b;
-            color: white;
-        }
-        
-        .btn-success:hover {
-            background: #036c3c;
-        }
-        
-        .btn-success:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        
-        .btn-neutral {
-            background: #757575;
-            color: white;
-        }
-        
-        .btn-neutral:hover {
-            background: #5f5f5f;
-        }
-        
-        .btn-cancel {
-            background: #e8e8e8;
-            color: #333;
-            border: 1px solid #ccc;
-        }
-        
-        .btn-cancel:hover {
-            background: #d8d8d8;
-        }
-        
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-        }
-        
-        .loading.show {
-            display: block;
-        }
-        
+        .btn-brand { background: #0070d2; color: white; }
+        .btn-brand:hover { background: #0057b8; }
+
+        .btn-success { background: #04844b; color: white; }
+        .btn-success:hover { background: #036c3c; }
+
+        .btn-neutral { background: #757575; color: white; }
+        .btn-cancel { background: #e8e8e8; color: #333; border: 1px solid #ccc; }
+
+        .loading { display: none; text-align: center; padding: 20px; }
+        .loading.show { display: block; }
+
         .spinner {
             width: 40px;
             height: 40px;
@@ -254,378 +160,145 @@
             animation: spin 1s linear infinite;
             margin: 0 auto 15px;
         }
-        
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
-        .loading-text {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 10px;
-        }
-        
-        .processing-steps {
-            background: #f0f4f8;
-            border-radius: 6px;
-            padding: 12px;
-            max-height: 200px;
-            overflow-y: auto;
-            margin-top: 10px;
-        }
-        
-        .processing-title {
-            font-size: 11px;
-            font-weight: bold;
-            margin-bottom: 8px;
-            color: #333;
-        }
-        
-        .step {
-            font-size: 11px;
-            margin-bottom: 6px;
-            color: #666;
-            word-break: break-word;
-        }
-        
-        .step.completed {
-            color: #0070d2;
-        }
-        
-        .step-icon {
-            margin-right: 4px;
-        }
-        
-        .step-time {
-            color: #999;
-            font-size: 10px;
-        }
-        
+
         .guide {
             background: #f0f4f8;
             border-left: 4px solid #0070d2;
             border-radius: 6px;
             padding: 12px;
             margin-top: 20px;
-            display: none;
-        }
-        
-        .guide.show {
             display: block;
         }
-        
-        .guide-title {
-            font-size: 13px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 8px;
-        }
-        
-        .guide-list {
-            list-style: none;
-            padding-left: 0;
-        }
-        
-        .guide-list li {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 6px;
-            padding-left: 20px;
-            position: relative;
-        }
-        
-        .guide-list li:before {
-            content: "•";
-            position: absolute;
-            left: 0;
-        }
+
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- 헤더 -->
         <div class="header">
             <h1>🤖 AILee - AI 지문 인증</h1>
             <p>카메라 기반 지문 인식 출근 시스템</p>
         </div>
-        
-        <!-- 메시지 -->
+
         <div id="statusMessage" class="message info"></div>
         <div id="errorMessage" class="message error"></div>
         <div id="successMessage" class="message success"></div>
         
-        <!-- 비디오 피드 -->
         <div id="videoContainer" class="video-container">
-            <video id="video" autoplay playsinline muted webkit-playsinline x5-playsinline></video>
-            <div class="video-label">
-                <p>📷 카메라 활성</p>
-            </div>
+            <video id="video" autoplay playsinline muted></video>
         </div>
+
         <canvas id="canvas"></canvas>
-        
-        <!-- 캡처된 이미지 -->
-        <img id="capturedImage" class="captured-image" alt="캡처된 지문">
-        
-        <!-- 신뢰도 -->
-        <div id="confidenceContainer" class="confidence-container">
-            <div class="confidence-label">인식 신뢰도</div>
-            <div class="progress-bar">
-                <div id="progressFill" class="progress-fill" style="width: 0%;">0%</div>
-            </div>
-            <div id="confidencePercent" class="confidence-percent">0%</div>
-        </div>
-        
-        <!-- 버튼 그룹 -->
+        <img id="capturedImage" class="captured-image" alt="캡처된 이미지">
+
         <div class="button-group">
             <button id="startBtn" class="btn-brand" onclick="handleStartCamera()">📷 시작</button>
             <button id="captureBtn" class="btn-success" onclick="handleCapture()" style="display:none;">👆 캡처</button>
             <button id="retryBtn" class="btn-neutral" onclick="handleRetry()" style="display:none;">🔄 재시도</button>
             <button id="cancelBtn" class="btn-cancel" onclick="handleCancel()" style="display:none;">❌ 취소</button>
         </div>
-        
-        <!-- 로딩 -->
-        <div id="loading" class="loading">
-            <div class="spinner"></div>
-            <div id="loadingText" class="loading-text"></div>
-            <div id="processingSteps" class="processing-steps" style="display:none;">
-                <div class="processing-title">⏳ 진행 상황:</div>
-                <div id="stepsList"></div>
-            </div>
-        </div>
-        
-        <!-- 가이드 -->
-        <div id="guide" class="guide show">
-            <div class="guide-title">ℹ️ 사용 가이드</div>
-            <ul class="guide-list">
-                <li>📷 시작 버튼을 누르세요</li>
-                <li>손가락을 카메라 앞에 올려주세요</li>
-                <li>지문이 명확할 때 👆 캡처 버튼을 누르세요</li>
-                <li>✓ AI가 지문을 인식하고 출근이 기록됩니다</li>
+
+        <div id="guide" class="guide">
+            <p>📌 사용 팁</p>
+            <ul>
+                <li>후면 카메라로 자동 전환됨 → 지문이 훨씬 선명해짐</li>
+                <li>손가락은 카메라에서 5~10cm 정도 떨어지게</li>
+                <li>밝은 환경에서 촬영하면 자동 초점이 더 잘 잡힘</li>
             </ul>
         </div>
     </div>
 
-    <script>
-        let stream = null;
-        let videoElement = null;
-        let canvasElement = null;
-        let processingSteps = [];
+<script>
+let stream = null;
+let videoElement = null;
+let canvasElement = null;
 
-        // 메시지 표시
-        function showMessage(type, text) {
-            const elem = document.getElementById(type + 'Message');
-            if (text) {
-                elem.textContent = text;
-                elem.classList.add('show');
-            } else {
-                elem.classList.remove('show');
-            }
-        }
+async function handleStartCamera() {
+    try {
+        showMessage('status', '카메라 활성화 중...');
+        showMessage('error', '');
 
-        // 로딩 표시
-        function setLoading(isLoading, text = '') {
-            const loading = document.getElementById('loading');
-            const loadingText = document.getElementById('loadingText');
-            
-            if (isLoading) {
-                loading.classList.add('show');
-                loadingText.textContent = text;
-            } else {
-                loading.classList.remove('show');
-                document.getElementById('processingSteps').style.display = 'none';
-            }
-        }
+        const constraints = {
+            video: {
+                facingMode: { ideal: "environment" }, // 📌 후면 카메라 우선
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            },
+            audio: false
+        };
 
-        // 진행 단계 추가
-        function addProcessingStep(name, id) {
-            processingSteps.push({
-                id: id,
-                name: name,
-                completed: false,
-                time: null,
-                startTime: performance.now()
-            });
-            updateProcessingSteps();
-        }
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
 
-        // 진행 단계 완료
-        function completeProcessingStep(id, totalTime) {
-            const step = processingSteps.find(s => s.id === id);
-            if (step) {
-                step.completed = true;
-                step.time = totalTime.toFixed(0);
-            }
-            updateProcessingSteps();
-        }
+        videoElement = document.getElementById('video');
+        canvasElement = document.getElementById('canvas');
+        videoElement.srcObject = stream;
 
-        // 진행 단계 업데이트
-        function updateProcessingSteps() {
-            const stepsList = document.getElementById('stepsList');
-            const container = document.getElementById('processingSteps');
-            container.style.display = 'block';
-            
-            stepsList.innerHTML = processingSteps.map(step => `
-                <div class="step ${step.completed ? 'completed' : ''}">
-                    <span class="step-icon">${step.completed ? '✓' : '→'}</span>
-                    ${step.name}
-                    ${step.time ? `<span class="step-time">(${step.time}ms)</span>` : ''}
-                </div>
-            `).join('');
-        }
+        await videoElement.play();
+        document.getElementById('videoContainer').style.display = 'block';
+        document.getElementById('startBtn').style.display = 'none';
+        document.getElementById('captureBtn').style.display = 'block';
+        document.getElementById('cancelBtn').style.display = 'block';
 
-        // 카메라 시작
-        async function handleStartCamera() {
-            try {
-                showMessage('status', '카메라를 활성화 중입니다...');
-                showMessage('error', '');
-                setLoading(true, '카메라 권한 요청 중...');
+        showMessage('status', '손가락을 카메라 앞에 올려주세요.');
 
-                const constraints = {
-                    video: {
-                        facingMode: 'user',
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
-                    },
-                    audio: false
-                };
+    } catch (error) {
+        showMessage('error', '카메라 오류: ' + error.message);
+    }
+}
 
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
-                console.log('✓ 카메라 권한 획득');
+function handleCapture() {
+    const width = videoElement.videoWidth;
+    const height = videoElement.videoHeight;
 
-                setLoading(false);
-                videoElement = document.getElementById('video');
-                canvasElement = document.getElementById('canvas');
+    canvasElement.width = width;
+    canvasElement.height = height;
 
-                videoElement.srcObject = stream;
-                await videoElement.play();
+    const context = canvasElement.getContext('2d');
+    context.drawImage(videoElement, 0, 0, width, height);
 
-                document.getElementById('videoContainer').classList.add('show');
-                document.getElementById('guide').classList.remove('show');
-                document.getElementById('startBtn').style.display = 'none';
-                document.getElementById('captureBtn').style.display = 'block';
-                document.getElementById('cancelBtn').style.display = 'block';
+    const captured = canvasElement.toDataURL("image/jpeg", 0.9);
+    const img = document.getElementById('capturedImage');
+    img.src = captured;
+    img.style.display = 'block';
 
-                showMessage('status', '카메라 활성. 손가락을 카메라 앞에 올려주세요.');
+    showMessage('success', '📸 지문 이미지 캡처됨!');
+    document.getElementById('captureBtn').style.display = 'none';
+    document.getElementById('retryBtn').style.display = 'block';
+}
 
-            } catch (error) {
-                console.error('카메라 오류:', error);
-                if (error.name === 'NotAllowedError') {
-                    showMessage('error', '카메라 권한이 거부되었습니다.');
-                } else {
-                    showMessage('error', `카메라 오류: ${error.message}`);
-                }
-                setLoading(false);
-            }
-        }
+function handleRetry() {
+    document.getElementById('capturedImage').style.display = 'none';
+    document.getElementById('retryBtn').style.display = 'none';
+    document.getElementById('captureBtn').style.display = 'block';
+    showMessage('status', '다시 손가락을 올려주세요.');
+}
 
-        // 지문 캡처
-        async function handleCapture() {
-            try {
-                showMessage('status', '지문을 캡처 중입니다...');
-                showMessage('error', '');
-                setLoading(true, '지문 캡처 중...');
-                processingSteps = [];
+function handleCancel() {
+    if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+    }
+    showMessage('status', '');
+    document.getElementById('videoContainer').style.display = 'none';
+    document.getElementById('startBtn').style.display = 'block';
+    document.getElementById('captureBtn').style.display = 'none';
+    document.getElementById('retryBtn').style.display = 'none';
+    document.getElementById('cancelBtn').style.display = 'none';
+}
 
-                const overallStart = performance.now();
+function showMessage(type, msg) {
+    ['status', 'error', 'success'].forEach(id => {
+        document.getElementById(id + 'Message').style.display = 'none';
+    });
 
-                // Step 1: 캡처
-                addProcessingStep('이미지 캡처 중...', 1);
-                
-                const width = videoElement.videoWidth;
-                const height = videoElement.videoHeight;
-                canvasElement.width = width;
-                canvasElement.height = height;
+    const elem = document.getElementById(type + 'Message');
+    elem.textContent = msg;
+    elem.style.display = 'block';
+}
+</script>
 
-                const context = canvasElement.getContext('2d');
-                context.drawImage(videoElement, 0, 0, width, height);
-
-                const capturedImage = canvasElement.toDataURL('image/jpeg', 0.7);
-                document.getElementById('capturedImage').src = capturedImage;
-                document.getElementById('capturedImage').classList.add('show');
-
-                completeProcessingStep(1, performance.now() - overallStart);
-
-                // Step 2: 특징 추출 시뮬레이션
-                addProcessingStep('지문 특징 추출 중...', 2);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                completeProcessingStep(2, performance.now() - overallStart);
-
-                // Step 3: 지문 매칭 시뮬레이션
-                addProcessingStep('등록된 지문과 비교 중...', 3);
-                await new Promise(resolve => setTimeout(resolve, 800));
-                
-                // 랜덤 신뢰도 생성
-                const confidence = 0.85 + Math.random() * 0.15;
-                completeProcessingStep(3, performance.now() - overallStart);
-
-                // Step 4: 출근 기록
-                addProcessingStep('출근 기록 중...', 4);
-                await new Promise(resolve => setTimeout(resolve, 600));
-                completeProcessingStep(4, performance.now() - overallStart);
-
-                // 신뢰도 표시
-                document.getElementById('confidenceContainer').classList.add('show');
-                document.getElementById('progressFill').style.width = (confidence * 100) + '%';
-                document.getElementById('progressFill').textContent = (confidence * 100).toFixed(0) + '%';
-                document.getElementById('confidencePercent').textContent = (confidence * 100).toFixed(2) + '%';
-
-                showMessage('success', `✓ 지문 인증 성공!\\n신뢰도: ${(confidence * 100).toFixed(2)}%`);
-                
-                document.getElementById('captureBtn').style.display = 'none';
-                document.getElementById('cancelBtn').style.display = 'none';
-                document.getElementById('retryBtn').style.display = 'block';
-
-                const totalTime = performance.now() - overallStart;
-                console.log(`✅ 전체 처리 완료: ${totalTime.toFixed(2)}ms`);
-
-                setLoading(false);
-
-            } catch (error) {
-                console.error('캡처 오류:', error);
-                showMessage('error', `캡처 오류: ${error.message}`);
-                setLoading(false);
-            }
-        }
-
-        // 재시도
-        function handleRetry() {
-            processingSteps = [];
-            document.getElementById('capturedImage').classList.remove('show');
-            document.getElementById('confidenceContainer').classList.remove('show');
-            document.getElementById('captureBtn').style.display = 'block';
-            document.getElementById('cancelBtn').style.display = 'block';
-            document.getElementById('retryBtn').style.display = 'none';
-            showMessage('status', '손가락을 카메라 앞에 올려주세요.');
-            showMessage('error', '');
-            showMessage('success', '');
-        }
-
-        // 취소
-        function handleCancel() {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-            document.getElementById('videoContainer').classList.remove('show');
-            document.getElementById('capturedImage').classList.remove('show');
-            document.getElementById('confidenceContainer').classList.remove('show');
-            document.getElementById('guide').classList.add('show');
-            document.getElementById('startBtn').style.display = 'block';
-            document.getElementById('captureBtn').style.display = 'none';
-            document.getElementById('cancelBtn').style.display = 'none';
-            document.getElementById('retryBtn').style.display = 'none';
-            processingSteps = [];
-            showMessage('status', '');
-            showMessage('error', '');
-            showMessage('success', '');
-        }
-
-        // 초기화
-        window.addEventListener('unload', () => {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-        });
-    </script>
 </body>
 </html>
