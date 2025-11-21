@@ -3,58 +3,124 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🤖 AILee v3 - 촬영 UX 가이드</title>
+  <title>🤖 AILee v1 - 손가락 모양 기반 등록/인증</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:#f5f5f5;padding:10px;}
-    .container{max-width:480px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);padding:20px;}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+      background:#f5f5f5;padding:10px;
+    }
+    .container{
+      max-width:480px;margin:0 auto;background:#fff;border-radius:12px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.08);padding:20px;
+    }
     .header{text-align:center;margin-bottom:16px;border-bottom:2px solid #0070d2;padding-bottom:10px;}
     .header h1{font-size:20px;color:#0070d2;margin-bottom:4px;}
     .header p{font-size:12px;color:#666;}
-    .message{padding:8px 10px;margin-bottom:8px;border-radius:6px;font-size:12px;display:none;}
+
+    .message{
+      padding:8px 10px;margin-bottom:8px;border-radius:6px;font-size:12px;display:none;word-break:break-word;
+    }
     .message.show{display:block;}
     .message.info{background:#e7f3ff;border-left:4px solid #0070d2;color:#0070d2;}
     .message.error{background:#fef1f0;border-left:4px solid #c23030;color:#c23030;}
     .message.success{background:#dffcf0;border-left:4px solid #04844b;color:#04844b;}
 
-    .video-container{position:relative;width:100%;max-width:480px;margin:0 auto 8px;background:#000;border-radius:10px;overflow:hidden;display:none;}
+    .video-container{
+      position:relative;width:100%;max-width:480px;margin:0 auto 8px;
+      background:#000;border-radius:10px;overflow:hidden;display:none;
+    }
     video{width:100%;height:auto;display:block;object-fit:contain;background:#000;}
-    .video-label{position:absolute;top:8px;left:8px;padding:4px 8px;border-radius:4px;background:rgba(0,0,0,0.6);color:#eee;font-size:11px;}
-    .finger-guide{position:absolute;top:50%;left:50%;width:45%;height:45%;transform:translate(-50%,-50%);border-radius:12px;border:3px dashed rgba(255,255,255,0.9);pointer-events:none;transition:.15s;}
-    .finger-guide.good{border-color:#00c853;background:rgba(0,200,83,0.08);}
-    .finger-guide.warn{border-color:#ffb300;background:rgba(255,179,0,0.08);}
-    .finger-guide.bad{border-color:#e53935;background:rgba(229,57,53,0.05);}
-    .status-badge{position:absolute;bottom:8px;right:8px;padding:4px 8px;border-radius:999px;font-size:11px;color:#fff;background:rgba(0,0,0,0.7);}
+    .video-label{
+      position:absolute;top:8px;left:8px;padding:4px 8px;border-radius:4px;
+      background:rgba(0,0,0,0.6);color:#eee;font-size:11px;pointer-events:none;
+    }
+    .finger-guide{
+      position:absolute;top:50%;left:50%;width:45%;height:45%;transform:translate(-50%,-50%);
+      border-radius:12px;border:3px dashed rgba(255,255,255,0.9);box-shadow:0 0 0 2px rgba(0,0,0,0.3);
+      pointer-events:none;transition:.15s;
+    }
+    .finger-guide.state-idle{border-color:rgba(255,255,255,0.9);background:transparent;}
+    .finger-guide.state-good{border-color:#00c853;box-shadow:0 0 0 2px rgba(0,200,83,0.4);background:rgba(0,200,83,0.08);}
+    .finger-guide.state-warn{border-color:#ffb300;box-shadow:0 0 0 2px rgba(255,179,0,0.4);background:rgba(255,179,0,0.08);}
+    .finger-guide.state-bad{border-color:#e53935;box-shadow:0 0 0 2px rgba(229,57,53,0.4);background:rgba(229,57,53,0.05);}
+    .status-badge{
+      position:absolute;bottom:8px;right:8px;padding:4px 8px;border-radius:999px;
+      font-size:11px;color:#fff;background:rgba(0,0,0,0.65);pointer-events:none;
+    }
+    .status-badge.good{background:rgba(0,200,83,0.9);}
+    .status-badge.warn{background:rgba(255,179,0,0.9);}
+    .status-badge.bad{background:rgba(229,57,53,0.9);}
 
-    .button-group{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
-    button{padding:10px 12px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;min-height:40px;}
+    .button-group{
+      display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;
+    }
+    button{
+      padding:10px 12px;border:none;border-radius:6px;font-size:13px;font-weight:600;
+      cursor:pointer;min-height:40px;transition:.15s;
+    }
+    button:active{transform:scale(.98);}
     .btn-brand{background:#0070d2;color:#fff;}
     .btn-brand:hover{background:#005bb5;}
     .btn-cancel{background:#e0e0e0;color:#333;}
     .btn-cancel:hover{background:#d0d0d0;}
     .btn-disabled{background:#ccc !important;cursor:not-allowed !important;}
 
+    .hint{font-size:11px;color:#777;margin-bottom:8px;}
+    .guide{background:#f0f4f8;border-left:4px solid #0070d2;border-radius:6px;padding:10px;margin-top:8px;}
+    .guide-title{font-size:13px;font-weight:bold;margin-bottom:4px;color:#333;}
+    .guide-list{list-style:none;padding-left:0;}
+    .guide-list li{font-size:12px;color:#555;margin-bottom:4px;padding-left:16px;position:relative;}
+    .guide-list li::before{content:"•";position:absolute;left:4px;}
+
     #analyzeCanvas{display:none;}
+
+    /* ✅ 인증 결과 오버레이 */
+    .auth-result{
+      position:absolute;
+      top:50%;
+      left:50%;
+      transform:translate(-50%,-50%);
+      padding:14px 20px;
+      border-radius:999px;
+      background:rgba(0,200,83,0.9);
+      color:#fff;
+      font-size:16px;
+      font-weight:bold;
+      display:none;
+      align-items:center;
+      gap:8px;
+      box-shadow:0 4px 16px rgba(0,0,0,0.4);
+      z-index:10;
+    }
+    .auth-result.show{
+      display:flex;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>🤖 AILee v3</h1>
-      <p>거리 · 위치 · 조명을 실시간으로 평가해주는 촬영 가이드</p>
+      <h1>🤖 AILee v1</h1>
+      <p>손가락 모양/밝기 패턴 기반 간단 등록·인증 데모</p>
     </div>
 
     <div id="infoMessage" class="message info show">
-      [시작]을 누르고 손가락을 네모 안에 맞춰보세요. 어떤 점이 안 좋은지 실시간으로 알려줘요.
+      카메라를 켜고, 손가락을 네모 안에 맞춘 뒤 품질이 좋을 때 기준을 등록해보세요.
     </div>
     <div id="errorMessage" class="message error"></div>
     <div id="successMessage" class="message success"></div>
 
     <div id="videoContainer" class="video-container">
       <video id="video" autoplay playsinline muted></video>
-      <div class="video-label">📷 촬영 가이드 모드</div>
-      <div id="fingerGuide" class="finger-guide"></div>
+      <div class="video-label">📷 카메라 활성 중</div>
+      <div id="fingerGuide" class="finger-guide state-idle"></div>
       <div id="statusBadge" class="status-badge">대기 중</div>
+
+      <!-- ✅ 인증 성공시 표시될 오버레이 -->
+      <div id="authResult" class="auth-result">
+        ✅ 지문 인증 완료
+      </div>
     </div>
 
     <canvas id="analyzeCanvas" width="160" height="120"></canvas>
@@ -63,10 +129,30 @@
       <button id="startBtn" class="btn-brand" onclick="startCamera()">📷 시작</button>
       <button id="stopBtn" class="btn-cancel btn-disabled" onclick="stopCamera()" disabled>❌ 종료</button>
     </div>
+    <div class="button-group">
+      <button id="enrollBtn" class="btn-brand btn-disabled" onclick="enrollFinger()" disabled>📌 기준 등록</button>
+      <button id="verifyBtn" class="btn-brand btn-disabled" onclick="verifyFinger()" disabled>✅ 인증하기</button>
+    </div>
+
+    <div class="hint">
+      ⚠️ 진짜 지문선 인증이 아니라, 손가락 모양/밝기 패턴 비교라서 보안용이 아니라 데모용이라고 보면 돼.
+    </div>
+
+    <div class="guide">
+      <div class="guide-title">사용 흐름</div>
+      <ul class="guide-list">
+        <li>[📷 시작] → 손가락을 중앙 네모에 맞추기</li>
+        <li>네모가 초록색일 때 [📌 기준 등록]</li>
+        <li>손을 뗐다 다시 같은 손가락을 올리고 [✅ 인증하기]</li>
+      </ul>
+    </div>
   </div>
 
   <script>
     let stream=null,video=null,analyzeCanvas=null,analyzeCtx=null,analyzing=false;
+    let enrolledTemplate=null,lastQualityStatus='bad';
+    const TEMPLATE_SIZE=32,MATCH_THRESHOLD=15;
+
     const infoMessage=document.getElementById("infoMessage");
     const errorMessage=document.getElementById("errorMessage");
     const successMessage=document.getElementById("successMessage");
@@ -75,6 +161,9 @@
     const statusBadge=document.getElementById("statusBadge");
     const startBtn=document.getElementById("startBtn");
     const stopBtn=document.getElementById("stopBtn");
+    const enrollBtn=document.getElementById("enrollBtn");
+    const verifyBtn=document.getElementById("verifyBtn");
+    const authResult=document.getElementById("authResult"); // ✅ 오버레이 엘리먼트
 
     function setInfo(m){infoMessage.textContent=m;infoMessage.classList.add("show");}
     function clearInfo(){infoMessage.classList.remove("show");}
@@ -82,6 +171,14 @@
     function clearError(){errorMessage.classList.remove("show");}
     function setSuccess(m){successMessage.textContent=m;successMessage.classList.add("show");}
     function clearSuccess(){successMessage.classList.remove("show");}
+
+    function showAuthOverlay(show){
+      if(show){
+        authResult.classList.add("show");
+      }else{
+        authResult.classList.remove("show");
+      }
+    }
 
     function setButtons(running){
       if(running){
@@ -91,11 +188,30 @@
         startBtn.disabled=false;startBtn.classList.remove("btn-disabled");
         stopBtn.disabled=true;stopBtn.classList.add("btn-disabled");
       }
+      updateEnrollVerifyButtons();
+    }
+
+    function updateEnrollVerifyButtons(){
+      if(!stream){
+        enrollBtn.disabled=true;enrollBtn.classList.add("btn-disabled");
+        verifyBtn.disabled=true;verifyBtn.classList.add("btn-disabled");
+        return;
+      }
+      if(lastQualityStatus==='good'){
+        enrollBtn.disabled=false;enrollBtn.classList.remove("btn-disabled");
+      }else{
+        enrollBtn.disabled=true;enrollBtn.classList.add("btn-disabled");
+      }
+      if(enrolledTemplate && lastQualityStatus==='good'){
+        verifyBtn.disabled=false;verifyBtn.classList.remove("btn-disabled");
+      }else{
+        verifyBtn.disabled=true;verifyBtn.classList.add("btn-disabled");
+      }
     }
 
     async function startCamera(){
       try{
-        clearError();clearSuccess();
+        clearError();clearSuccess();showAuthOverlay(false);
         setInfo("카메라 권한을 요청 중입니다...");
         const constraints={
           video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},
@@ -110,7 +226,7 @@
         videoContainer.style.display="block";
         analyzing=true;
         setButtons(true);
-        setInfo("손가락을 네모 안에 맞추고, 아래 메시지 보고 거리/위치/조명을 조정해보세요.");
+        setInfo("손가락을 가운데 네모에 맞추면 품질을 표시합니다.");
         requestAnimationFrame(analyzeLoop);
       }catch(e){
         setError("카메라 사용 불가: "+e.message);
@@ -123,11 +239,13 @@
       if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
       if(video){video.srcObject=null;}
       videoContainer.style.display="none";
-      fingerGuide.className="finger-guide";
+      fingerGuide.className="finger-guide state-idle";
+      statusBadge.className="status-badge";
       statusBadge.textContent="대기 중";
+      lastQualityStatus='bad';
       setButtons(false);
-      setInfo("카메라가 종료되었습니다.");
-      clearError();clearSuccess();
+      setInfo("카메라 종료. 다시 시작하려면 [시작]을 누르세요.");
+      clearError();clearSuccess();showAuthOverlay(false);
     }
 
     function isSkinPixel(r,g,b){
@@ -137,26 +255,18 @@
 
     function analyzeLoop(){
       if(!analyzing||!video||video.readyState<2){
-        if(analyzing)requestAnimationFrame(analyzeLoop);
-        return;
+        if(analyzing)requestAnimationFrame(analyzeLoop);return;
       }
       const w=analyzeCanvas.width,h=analyzeCanvas.height;
       analyzeCtx.drawImage(video,0,0,w,h);
       const frame=analyzeCtx.getImageData(0,0,w,h),data=frame.data;
-
       const roiX=Math.floor(w*0.275),roiY=Math.floor(h*0.275),
             roiW=Math.floor(w*0.45),roiH=Math.floor(h*0.45);
-
       let skinCount=0,totalCount=0,minX=roiW,maxX=0,minY=roiH,maxY=0;
-      let brightSum=0; // 밝기 평균용
-
       for(let y=roiY;y<roiY+roiH;y++){
         for(let x=roiX;x<roiX+roiW;x++){
-          const idx=(y*w+x)*4;
-          const r=data[idx],g=data[idx+1],b=data[idx+2];
+          const idx=(y*w+x)*4,r=data[idx],g=data[idx+1],b=data[idx+2];
           totalCount++;
-          const gray=0.299*r+0.587*g+0.114*b;
-          brightSum+=gray;
           if(isSkinPixel(r,g,b)){
             skinCount++;
             const lx=x-roiX,ly=y-roiY;
@@ -165,59 +275,102 @@
           }
         }
       }
-
-      const brightness=brightSum/totalCount; // 0~255
       const skinRatio=skinCount/totalCount;
-      let status="bad",msg="",badge="나쁨";
-
-      // 1) 조명 체크 먼저
-      if(brightness<70){
+      let status="bad",reason="",badgeClass="status-badge bad";
+      if(skinRatio<0.05){
         status="bad";
-        msg="화면이 너무 어둡습니다. 방 조명을 켜거나 창가 쪽으로 이동해 주세요.";
-      }else if(brightness>200){
-        status="bad";
-        msg="너무 밝거나 빛이 강하게 반사되고 있습니다. 직사광선을 피하고 손가락에 비치는 강한 빛을 줄여주세요.";
-      }else if(skinRatio<0.05){
-        status="bad";
-        msg="손가락이 잘 보이지 않습니다. 네모 안으로 손가락을 가져오고, 카메라와의 거리를 조금 더 가깝게 맞춰주세요.";
+        reason="손가락이 잘 보이지 않습니다. 네모 안으로 맞추고 조금 더 가까이 가져와 주세요.";
       }else{
-        // 2) 거리/위치 평가
         const width=maxX-minX,height=maxY-minY,area=width*height,roiArea=roiW*roiH;
         const areaRatio=area/roiArea;
         const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
         const nx=cx/roiW,ny=cy/roiH;
-        const centerOffX=Math.abs(nx-0.5),centerOffY=Math.abs(ny-0.5);
-
-        if(centerOffX>0.25||centerOffY>0.25){
-          status="warn";
-          msg="손가락 위치가 가운데에서 많이 벗어났습니다. 네모 중앙에 손가락 끝이 오도록 맞춰주세요.";
-        }else if(areaRatio<0.12){
-          status="warn";
-          msg="손가락이 너무 멉니다. 카메라 쪽으로 조금 더 가까이 가져와 주세요(너무 가깝게는 X).";
-        }else if(areaRatio>0.55){
-          status="warn";
-          msg="손가락이 너무 가깝습니다. 화면에서 손가락이 너무 크게 보이면 1~2cm 정도 뒤로 빼주세요.";
+        const centerTooOff=Math.abs(nx-0.5)>0.2||Math.abs(ny-0.5)>0.2;
+        if(centerTooOff){
+          status="warn";reason="손가락이 중앙에서 벗어났습니다. 네모 중앙으로 맞춰 주세요.";badgeClass="status-badge warn";
+        }else if(areaRatio<0.15){
+          status="warn";reason="손가락이 너무 멀리 있습니다. 카메라 쪽으로 조금 더 가까이 가져와 주세요.";badgeClass="status-badge warn";
+        }else if(areaRatio>0.50){
+          status="warn";reason="손가락이 너무 가깝습니다. 약간만 멀리 떼 주세요.";badgeClass="status-badge warn";
         }else{
-          status="good";
-          msg="지문을 촬영하기에 좋은 거리/위치/조명입니다. 이 상태에서 캡처/등록 기능을 사용하면 됩니다.";
+          status="good";reason="등록/인증하기 좋은 위치입니다. 지금 [기준 등록] 가능.";badgeClass="status-badge good";
         }
       }
+      lastQualityStatus=status;
 
-      // UI 반영
-      fingerGuide.className="finger-guide " + (status==="good"?"good":status==="warn"?"warn":"bad");
+      fingerGuide.className="finger-guide state-"+(status==="good"?"good":status==="warn"?"warn":"bad");
+      statusBadge.className=badgeClass;
       statusBadge.textContent=
-        status==="good" ? "양호" :
-        status==="warn" ? "조정 필요" : "나쁨";
+        status==="good"?"품질 양호 (등록 가능)" :
+        status==="warn"?"조정 필요":"손가락 인식 약함";
 
-      if(status==="good"){
-        setSuccess(msg);clearError();
-      }else if(status==="warn"){
-        clearSuccess();setError(msg);
-      }else{
-        clearSuccess();setError(msg);
+      if(status==="good"){setSuccess(reason);clearError();}
+      else{clearSuccess();setError(reason);}
+
+      // 품질 체크 중에는 인증 오버레이 감추기
+      if(status!=="good"){
+        showAuthOverlay(false);
       }
 
+      updateEnrollVerifyButtons();
       if(analyzing)requestAnimationFrame(analyzeLoop);
+    }
+
+    function captureTemplateFromCurrentFrame(){
+      const w=analyzeCanvas.width,h=analyzeCanvas.height;
+      analyzeCtx.drawImage(video,0,0,w,h);
+      const frame=analyzeCtx.getImageData(0,0,w,h),data=frame.data;
+      const roiX=Math.floor(w*0.275),roiY=Math.floor(h*0.275),
+            roiW=Math.floor(w*0.45),roiH=Math.floor(h*0.45);
+      const tpl=new Float32Array(TEMPLATE_SIZE*TEMPLATE_SIZE);
+      const stepX=roiW/TEMPLATE_SIZE,stepY=roiH/TEMPLATE_SIZE;
+      let idxTpl=0;
+      for(let j=0;j<TEMPLATE_SIZE;j++){
+        for(let i=0;i<TEMPLATE_SIZE;i++){
+          const x=Math.floor(roiX+i*stepX),y=Math.floor(roiY+j*stepY);
+          const idx=(y*w+x)*4,r=data[idx],g=data[idx+1],b=data[idx+2];
+          const gray=0.299*r+0.587*g+0.114*b;
+          tpl[idxTpl++]=gray;
+        }
+      }
+      return tpl;
+    }
+
+    function templateDistance(a,b){
+      if(!a||!b||a.length!==b.length)return Infinity;
+      let sum=0;for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);
+      return sum/a.length;
+    }
+
+    function enrollFinger(){
+      clearError();clearSuccess();showAuthOverlay(false);
+      if(!stream){setError("카메라가 꺼져 있습니다. 먼저 [시작]을 눌러 주세요.");return;}
+      if(lastQualityStatus!=='good'){
+        setError("품질이 좋을 때만 등록할 수 있습니다. 네모가 초록색일 때 다시 등록해 주세요.");return;
+      }
+      enrolledTemplate=captureTemplateFromCurrentFrame();
+      setSuccess("현재 손가락을 기준으로 등록했습니다. 같은 손인지 [인증하기]로 확인해보세요.");
+      setInfo("같은 손가락을 다시 네모에 맞추고 [인증하기]를 눌러보세요.");
+      updateEnrollVerifyButtons();
+    }
+
+    function verifyFinger(){
+      clearError();clearSuccess();showAuthOverlay(false);
+      if(!enrolledTemplate){setError("등록된 기준이 없습니다. 먼저 [기준 등록]을 해 주세요.");return;}
+      if(!stream){setError("카메라가 꺼져 있습니다.");return;}
+      if(lastQualityStatus!=='good'){
+        setError("품질이 좋을 때만 인증을 시도할 수 있습니다. 네모가 초록색일 때 다시 시도해 주세요.");return;
+      }
+      setInfo("등록된 기준과 현재 손가락을 비교 중...");
+      const cur=captureTemplateFromCurrentFrame();
+      const dist=templateDistance(enrolledTemplate,cur);
+      if(dist<MATCH_THRESHOLD){
+        setSuccess(`인증 성공: 등록된 손가락과 패턴이 유사합니다. (거리 ${dist.toFixed(1)})`);
+        showAuthOverlay(true); // ✅ 화면 중앙에 "인증 완료" 표시
+      }else{
+        setError(`인증 실패: 등록된 손가락과 차이가 큽니다. (거리 ${dist.toFixed(1)})`);
+        showAuthOverlay(false);
+      }
     }
 
     window.addEventListener("unload",()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
