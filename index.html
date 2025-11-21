@@ -1,3 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AILee v2 Pro - 카메라 기반 손가락 인증 데모</title>
+
+  <!--
+    AILee v2 Pro - Touchless Finger Pattern Recognition Demo
+    Copyright (c) 2025 깽호
+
+    Licensed under the MIT License.
+    Permission is hereby granted, free of charge, to use, copy, modify,
+    merge, publish, distribute, sublicense, and sell copies of this software.
+
+    본 코드는 외부 오픈소스의 실제 코드 블록을 포함하지 않으며,
+    카메라 영상 처리·광도 패턴 기반 분석 로직은 직접 작성된 바닐라 JS입니다.
+  -->
+
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:#f5f5f5;padding:10px;}
+    .container{max-width:480px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);padding:20px;}
+    .header{text-align:center;margin-bottom:16px;border-bottom:2px solid #0070d2;padding-bottom:10px;}
+    .header h1{font-size:20px;color:#0070d2;margin-bottom:4px;}
+    .header p{font-size:12px;color:#666;}
+
+    .message{padding:8px 10px;margin-bottom:8px;border-radius:6px;font-size:12px;display:none;word-break:break-word;}
+    .message.show{display:block;}
+    .message.info{background:#e7f3ff;border-left:4px solid #0070d2;color:#0070d2;}
+    .message.error{background:#fef1f0;border-left:4px solid #c23030;color:#c23030;}
+    .message.success{background:#dffcf0;border-left:4px solid #04844b;color:#04844b;}
+
+    .video-container{position:relative;width:100%;max-width:480px;margin:0 auto 8px;background:#000;border-radius:10px;overflow:hidden;display:none;}
+    video{width:100%;height:auto;display:block;object-fit:cover;background:#000;}
+    .video-label{position:absolute;top:8px;left:8px;padding:4px 8px;border-radius:4px;background:rgba(0,0,0,0.6);color:#eee;font-size:11px;pointer-events:none;}
+
+    .finger-guide{
+      position:absolute;top:50%;left:50%;
+      width:45%;height:45%;transform:translate(-50%,-50%);
+      border-radius:12px;border:3px dashed rgba(255,255,255,0.9);
+      box-shadow:0 0 0 2px rgba(0,0,0,0.3);
+      pointer-events:none;transition:.15s;
+    }
+    .finger-guide.state-idle{border-color:rgba(255,255,255,0.9);}
+    .finger-guide.state-good{border-color:#00c853;box-shadow:0 0 0 2px rgba(0,200,83,0.4);background:rgba(0,200,83,0.06);}
+    .finger-guide.state-warn{border-color:#ffb300;box-shadow:0 0 0 2px rgba(255,179,0,0.4);background:rgba(255,179,0,0.08);}
+    .finger-guide.state-bad{border-color:#e53935;box-shadow:0 0 0 2px rgba(229,57,53,0.4);background:rgba(229,57,53,0.05);}
+
+    .status-badge{
+      position:absolute;bottom:8px;right:8px;
+      padding:4px 8px;border-radius:999px;font-size:11px;color:#fff;
+      background:rgba(0,0,0,0.6);pointer-events:none;
+    }
+    .status-badge.good{background:rgba(0,200,83,0.95);}
+    .status-badge.warn{background:rgba(255,179,0,0.95);}
+    .status-badge.bad{background:rgba(229,57,53,0.95);}
+
+    .button-group{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+    button{
+      padding:10px 12px;border:none;border-radius:6px;font-size:13px;font-weight:600;
+      cursor:pointer;min-height:40px;transition:.15s;
+    }
+    button:active{transform:scale(.97);}
+    .btn-brand{background:#0070d2;color:#fff;}
+    .btn-brand:hover{background:#005bb5;}
+    .btn-cancel{background:#e0e0e0;color:#333;}
+    .btn-disabled{background:#ccc !important;cursor:not-allowed !important;}
+
+    #analyzeCanvas{display:none;}
+
+    .auth-result{
+      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      padding:16px 22px;border-radius:999px;background:rgba(0,200,83,0.92);
+      color:white;font-size:17px;font-weight:bold;display:none;
+      box-shadow:0 4px 18px rgba(0,0,0,0.4);z-index:10;
+    }
+    .auth-result.show{display:block;}
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="header">
+      <h1>AILee v2 Pro</h1>
+      <p>손가락 패턴 기반 카메라 인증 (MIT License)</p>
+    </div>
+
+    <div id="infoMessage" class="message info show">카메라를 켜고, 손가락을 네모 안에 맞추세요.</div>
+    <div id="errorMessage" class="message error"></div>
+    <div id="successMessage" class="message success"></div>
+
+    <div id="videoContainer" class="video-container">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="video-label">카메라 활성</div>
+      <div id="fingerGuide" class="finger-guide state-idle"></div>
+      <div id="statusBadge" class="status-badge">대기 중</div>
+      <div id="authResult" class="auth-result">지문 인증 완료</div>
+    </div>
+
+    <canvas id="analyzeCanvas" width="160" height="120"></canvas>
+
+    <div class="button-group">
+      <button id="startBtn" class="btn-brand" onclick="startCamera()">시작</button>
+      <button id="stopBtn" class="btn-cancel btn-disabled" onclick="stopCamera()" disabled>종료</button>
+    </div>
+
+    <div class="button-group">
+      <button id="enrollBtn" class="btn-brand btn-disabled" onclick="enrollFinger()" disabled>기준 등록</button>
+      <button id="verifyBtn" class="btn-brand btn-disabled" onclick="verifyFinger()" disabled>인증하기</button>
+    </div>
+  </div>
+
 <script>
 /* ======================================================
    AILee v2 Pro (MIT License)
@@ -219,3 +332,4 @@ window.addEventListener("unload",()=>{
 </script>
 </body>
 </html>
+
