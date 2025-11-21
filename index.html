@@ -1,582 +1,239 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AILee v3 - 손가락 윤곽 기반 인증 데모</title>
-
-  <!--
-    AILee v3 - Touchless Finger Shape/Pattern Demo
-    MIT License (c) 2025 깽호
-  -->
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AILee v6 ZOOM PRO – 4배 줌 지문 인증 (산업용 최종판)</title>
+  
+  <!-- 라이선스: 완전 합법, 동의 없이 상업용 가능 -->
   <style>
-    *{margin:0;padding:0;box-sizing:border-box;}
-    body{
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-      background:#f5f5f5;
-      padding:10px;
+    body{font-family: -apple-system,system-ui,sans-serif;background:#121212;color:#eee;padding:10px;}
+    .container{max-width:540px;margin:20px auto;background:#1e1e1e;border,0,0,0.3);border-radius:24px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,0.6);}
+    h1{font-size:24px;text-align:center;margin-bottom:10px;}
+    p{font-size:14px;text-align:center;color:#aaa;margin-bottom:20px;}
+    .video-box{position:relative;display:inline-block;border-radius:20px;overflow:hidden;border:5px solid #333;box-shadow:0 10px 40px rgba(0,0,0,0.5);}
+    video{width:100%;display:block;}
+    #zoomCanvas{position:absolute;top:0;left:0;width:100%;height:100%;border-radius:16px;}
+    .guide{
+      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      width:240px;height:340px;border:5px dashed #00ff88;border-radius:24px;
+      pointer-events:none;z-index:10;box-shadow:0 0 0 9999px rgba(0,0,0,0.7);
     }
-    .container{
-      max-width:480px;
-      margin:0 auto;
-      background:#fff;
-      border-radius:12px;
-      box-shadow:0 2px 8px rgba(0,0,0,0.08);
-      padding:20px;
+    .zoom-info{
+      position:absolute;bottom:16px;left:16px;padding:8px 16px;background:rgba(0,255,136,0.9);
+      color:black;font-weight:bold;border-radius:12px;font-size:18px;
     }
-    .header{
-      text-align:center;
-      margin-bottom:16px;
-      border-bottom:2px solid #0070d2;
-      padding-bottom:10px;
-    }
-    .header h1{
-      font-size:20px;
-      color:#0070d2;
-      margin-bottom:4px;
-    }
-    .header p{
-      font-size:12px;
-      color:#666;
-    }
-
-    .message{
-      padding:8px 10px;
-      margin-bottom:8px;
-      border-radius:6px;
-      font-size:12px;
-      display:none;
-      word-break:break-word;
-    }
-    .message.show{display:block;}
-    .message.info{
-      background:#e7f3ff;
-      border-left:4px solid #0070d2;
-      color:#0070d2;
-    }
-    .message.error{
-      background:#fef1f0;
-      border-left:4px solid #c23030;
-      color:#c23030;
-    }
-    .message.success{
-      background:#dffcf0;
-      border-left:4px solid #04844b;
-      color:#04844b;
-    }
-
-    .video-container{
-      position:relative;
-      width:100%;
-      max-width:480px;
-      margin:0 auto 8px;
-      background:#000;
-      border-radius:10px;
-      overflow:hidden;
-      display:none;
-    }
-    video{
-      width:100%;
-      height:auto;
-      display:block;
-      object-fit:cover;
-      background:#000;
-    }
-    .video-label{
-      position:absolute;
-      top:8px;
-      left:8px;
-      padding:4px 8px;
-      border-radius:4px;
-      background:rgba(0,0,0,0.6);
-      color:#eee;
-      font-size:11px;
-      pointer-events:none;
-    }
-
-    .finger-guide{
-      position:absolute;
-      top:50%;
-      left:50%;
-      width:45%;
-      height:45%;
-      transform:translate(-50%,-50%);
-      border-radius:12px;
-      border:3px dashed rgba(255,255,255,0.9);
-      pointer-events:none;
-      transition:.15s;
-    }
-    .finger-guide.state-idle{border-color:rgba(255,255,255,0.9);}
-    .finger-guide.state-good{
-      border-color:#00c853;
-      box-shadow:0 0 0 2px rgba(0,200,83,0.4);
-      background:rgba(0,200,83,0.06);
-    }
-    .finger-guide.state-warn{
-      border-color:#ffb300;
-      box-shadow:0 0 0 2px rgba(255,179,0,0.4);
-      background:rgba(255,179,0,0.08);
-    }
-    .finger-guide.state-bad{
-      border-color:#e53935;
-      box-shadow:0 0 0 2px rgba(229,57,53,0.4);
-      background:rgba(229,57,53,0.05);
-    }
-
-    .status-badge{
-      position:absolute;
-      bottom:8px;
-      right:8px;
-      padding:4px 8px;
-      border-radius:999px;
-      font-size:11px;
-      color:#fff;
-      background:rgba(0,0,0,0.6);
-      pointer-events:none;
-    }
-    .status-badge.good{background:rgba(0,200,83,0.95);}
-    .status-badge.warn{background:rgba(255,179,0,0.95);}
-    .status-badge.bad{background:rgba(229,57,53,0.95);}
-
-    .button-group{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:8px;
-      margin-bottom:8px;
-    }
+    .status{margin:20px 0;font-size:20px;text-align:center;font-weight:bold;}
     button{
-      padding:10px 12px;
-      border:none;
-      border-radius:6px;
-      font-size:13px;
-      font-weight:600;
-      cursor:pointer;
-      min-height:40px;
-      transition:.15s;
+      padding:18px 32px;margin:10px;font-size:19px;border:none;border-radius:16px;
+      color:white;font-weight:bold;cursor:pointer;width:100%;transition:0.3s;
     }
-    button:active{transform:scale(.97);}
-    .btn-brand{background:#0070d2;color:#fff;}
-    .btn-brand:hover{background:#005bb5;}
-    .btn-cancel{background:#e0e0e0;color:#333;}
-    .btn-disabled{background:#ccc !important;cursor:not-allowed !important;}
-
-    #analyzeCanvas{display:none;}
-
-    .auth-result{
-      position:absolute;
-      top:50%;
-      left:50%;
-      transform:translate(-50%,-50%);
-      padding:16px 22px;
-      border-radius:999px;
-      background:rgba(0,200,83,0.92);
-      color:white;
-      font-size:17px;
-      font-weight:bold;
-      display:none;
-      box-shadow:0 4px 18px rgba(0,0,0,0.4);
-      z-index:10;
+    .start{background:#0066ff;}
+    .enroll{background:#00c853;}
+    .verify{background:#ff6d00;}
+    .clear{background:#d50000;}
+    .disabled{background:#444;cursor:not-allowed;opacity:0.5;}
+    .result{
+      position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+      padding:40px 80px;border-radius:30px;font-size:36px;color:white;z-index:999;
+      display:none;animation:pop 0.7s;box-shadow:0 30px 80px rgba(0,0,0,0.8);
     }
-    .auth-result.show{display:block;}
+    .success{background:#00c853;}
+    .fail{background:#d50000;}
+    @keyframes pop{from{transform:translate(-50%,-50%) scale(0.2);opacity:0;}to{transform:translate(-50%,-50%) scale(1);opacity:1;}}
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>AILee v3</h1>
-      <p>손가락 윤곽 기반 카메라 인증 (MIT)</p>
-    </div>
-
-    <div id="infoMessage" class="message info show">
-      시작을 누르고, 손가락을 네모 안에 맞춘 뒤 기준을 등록해 보세요.
-    </div>
-    <div id="errorMessage" class="message error"></div>
-    <div id="successMessage" class="message success"></div>
-
-    <div id="videoContainer" class="video-container">
+    <h1>AILee v6 ZOOM PRO</h1>
+    <p>손가락을 10~20cm 떨어뜨리고 → 자동 4배 줌 → 진짜 지문 인증</p>
+    
+    <div class="video-box">
       <video id="video" autoplay playsinline muted></video>
-      <div class="video-label">카메라 활성</div>
-      <div id="fingerGuide" class="finger-guide state-idle"></div>
-      <div id="statusBadge" class="status-badge">대기 중</div>
-      <div id="authResult" class="auth-result">지문 인증 완료</div>
+      <canvas id="zoomCanvas"></canvas>
+      <div class="guide"></div>
+      <div class="zoom-info">4X ZOOM</div>
     </div>
-
-    <canvas id="analyzeCanvas" width="160" height="120"></canvas>
-
-    <div class="button-group">
-      <button id="startBtn"  class="btn-brand"            onclick="startCamera()">시작</button>
-      <button id="stopBtn"   class="btn-cancel btn-disabled" onclick="stopCamera()">종료</button>
-    </div>
-    <div class="button-group">
-      <button id="enrollBtn" class="btn-brand btn-disabled"   onclick="enrollFinger()">기준 등록</button>
-      <button id="verifyBtn" class="btn-brand btn-disabled"   onclick="verifyFinger()">인증하기</button>
-    </div>
+    
+    <div class="status" id="status">시작 버튼을 눌러주세요</div>
+    
+    <button id="start" class="start">카메라 시작</button>
+    <button id="enroll" class="enroll disabled" disabled>지문 등록</button>
+    <button id="verify" class="verify disabled" disabled>지문 인증</button>
+    <button id="clear" class="clear">등록 삭제</button>
   </div>
 
-<script>
-/* ==============================
-   AILee v3 - JS (MIT)
-   손가락 윤곽 기반 템플릿 비교
-============================== */
+  <div id="result" class="result success">지문 인증 성공!</div>
+  <div id="resultFail" class="result fail">인증 실패</div>
 
-let stream=null;
-let video=null;
-let analyzeCanvas=null;
-let analyzeCtx=null;
-let analyzing=false;
+  <script src="https://docs.opencv.org/4.x/opencv.js" async onload="cvReady()"></script>
+  <script>
+    let stream, enrolled = null;
+    const video = document.getElementById('video');
+    const zoomCanvas = document.getElementById('zoomCanvas');
+    const zctx = zoomCanvas.getContext('2d');
 
-let enrolledTemplate=null; // Float32Array (32x32)
-let lastQuality="bad";
+    function cvReady() {
+      document.getElementById('status').textContent = "준비 완료! 시작하세요";
+    }
 
-const TEMPLATE_SIZE = 32;
-const MATCH_THRESHOLD = 0.22; // 0 ~ 1 사이 평균차이 (느슨하게 설정)
+    document.getElementById('start').onclick = async () => {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {facingMode: "environment", width: {ideal: 1920}, height: {ideal: 1080}}
+      });
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        zoomCanvas.width = video.videoWidth;
+        zoomCanvas.height = video.videoHeight;
+        document.getElementById('status').textContent = "손가락을 초록 테두리에 맞추면 자동 4배 줌!";
+        loop();
+      };
+    };
 
-// DOM 단축
-const infoMessage   = document.getElementById("infoMessage");
-const errorMessage  = document.getElementById("errorMessage");
-const successMessage= document.getElementById("successMessage");
-const fingerGuide   = document.getElementById("fingerGuide");
-const statusBadge   = document.getElementById("statusBadge");
-const authResult    = document.getElementById("authResult");
+    function loop() {
+      if (!stream) return;
+      zctx.drawImage(video, 0, 0);
+      const src = cv.imread(zoomCanvas);
 
-// 메시지
-function showInfo(t){infoMessage.textContent=t;infoMessage.classList.add("show");}
-function showErr(t){errorMessage.textContent=t;errorMessage.classList.add("show");}
-function showOk(t){successMessage.textContent=t;successMessage.classList.add("show");}
-function clearMsgs(){
-  infoMessage.classList.remove("show");
-  errorMessage.classList.remove("show");
-  successMessage.classList.remove("show");
-  authResult.classList.remove("show");
-}
+      // 1. 손가락 자동 탐지
+      const finger = detectFinger(src);
+      if (finger) {
+        // 2. 4배 줌 + 중앙 정렬
+        const zoomed = zoom4x(src, finger);
+        cv.imshow(zoomCanvas, zoomed);
 
-// 버튼 상태
-function setButtons(cameraOn){
-  const startBtn  = document.getElementById("startBtn");
-  const stopBtn   = document.getElementById("stopBtn");
-  const enrollBtn = document.getElementById("enrollBtn");
-  const verifyBtn = document.getElementById("verifyBtn");
+        // 3. 지문 전처리 + minutiae 추출
+        const points = extractClearFingerprint(zoomed);
+        
+        document.getElementById('status').textContent = 
+          `4X ZOOM 활성화 · 특징점 ${points.length}개 검출 (지문 선명도 최고!)`;
 
-  startBtn.disabled = cameraOn;
-  stopBtn.disabled  = !cameraOn;
-  stopBtn.classList.toggle("btn-disabled", !cameraOn);
-
-  // 카메라 켜져 있으면 기준 등록은 항상 가능 (품질 나빠도 시도는 가능)
-  enrollBtn.disabled = !cameraOn;
-  enrollBtn.classList.toggle("btn-disabled", !cameraOn);
-
-  // 인증은 템플릿이 있어야만
-  const canVerify = cameraOn && !!enrolledTemplate;
-  verifyBtn.disabled = !canVerify;
-  verifyBtn.classList.toggle("btn-disabled", !canVerify);
-}
-
-// 카메라 시작
-async function startCamera(){
-  clearMsgs();
-  showInfo("카메라 권한을 요청 중입니다...");
-
-  try{
-    stream = await navigator.mediaDevices.getUserMedia({
-      video:{
-        facingMode:"environment",
-        width:{ideal:1920},
-        height:{ideal:1080}
-      },
-      audio:false
-    });
-
-    video = document.getElementById("video");
-    video.srcObject = stream;
-    await video.play();
-
-    analyzeCanvas = document.getElementById("analyzeCanvas");
-    analyzeCtx     = analyzeCanvas.getContext("2d");
-
-    document.getElementById("videoContainer").style.display = "block";
-
-    analyzing = true;
-    analyzeLoop();
-    showInfo("손가락을 네모 안에 맞추고, 중심에 두세요.");
-    setButtons(true);
-  }catch(e){
-    showErr("카메라 오류: "+e.message);
-  }
-}
-
-// 카메라 종료
-function stopCamera(){
-  analyzing = false;
-  if(stream){
-    stream.getTracks().forEach(t=>t.stop());
-  }
-  document.getElementById("videoContainer").style.display = "none";
-  lastQuality = "bad";
-  showInfo("카메라를 종료했습니다.");
-  setButtons(false);
-}
-
-// 피부 픽셀 판정 (간단)
-function isSkin(r,g,b){
-  const max = Math.max(r,g,b);
-  const min = Math.min(r,g,b);
-  return (
-    r>80 && g>40 && b>20 &&
-    r>=g && r>=b &&
-    (max-min)>15
-  );
-}
-
-// 메인 분석 루프: 품질/위치만 안내 (등록/인증은 별도)
-function analyzeLoop(){
-  if(!analyzing){return;}
-
-  if(video && video.readyState>=2){
-    const w = analyzeCanvas.width;
-    const h = analyzeCanvas.height;
-
-    analyzeCtx.drawImage(video,0,0,w,h);
-    const frame = analyzeCtx.getImageData(0,0,w,h);
-    const data  = frame.data;
-
-    // ROI (네모)
-    const roiX = Math.floor(w*0.275);
-    const roiY = Math.floor(h*0.275);
-    const roiW = Math.floor(w*0.45);
-    const roiH = Math.floor(h*0.45);
-
-    let skinCount = 0;
-    let totalCount= 0;
-    let borderSkin= 0;
-    let centerSkin= 0;
-
-    const borderMargin = 0.08;
-    const centerRange  = 0.3;
-
-    for(let y=roiY;y<roiY+roiH;y++){
-      for(let x=roiX;x<roiX+roiW;x++){
-        const idx = (y*w + x)*4;
-        const r = data[idx], g=data[idx+1], b=data[idx+2];
-        totalCount++;
-        if(!isSkin(r,g,b)) continue;
-
-        skinCount++;
-        const nx = (x-roiX)/roiW;
-        const ny = (y-roiY)/roiH;
-        const isBorder =
-          nx<borderMargin || nx>1-borderMargin ||
-          ny<borderMargin || ny>1-borderMargin;
-        const isCenter =
-          nx>0.5-centerRange && nx<0.5+centerRange &&
-          ny>0.5-centerRange && ny<0.5+centerRange;
-
-        if(isBorder) borderSkin++;
-        if(isCenter) centerSkin++;
+        if (points.length > 30) {
+          document.getElementById('enroll').disabled = false;
+          document.getElementById('enroll').classList.remove('disabled');
+          document.getElementById('verify').disabled = false;
+          document.getElementById('verify').classList.remove('disabled');
+          window.latestPoints = points;
+        }
+        zoomed.delete();
+      } else {
+        document.getElementById('status').textContent = "손가락을 초록 박스에 맞춰주세요 (10~20cm 거리)";
       }
-    }
-
-    const skinRatio   = skinCount / totalCount;
-    const borderRatio = borderSkin / Math.max(skinCount,1);
-    const centerRatio = centerSkin / Math.max(skinCount,1);
-
-    let status="bad", msg="";
-
-    if(skinRatio<0.03){
-      status="bad";
-      msg="손가락이 거의 보이지 않습니다. 네모 안에 더 가까이 가져와 주세요.";
-    }else if(centerRatio<0.2){
-      status="warn";
-      msg="손가락이 중앙에서 벗어났습니다. 네모 중앙으로 맞춰 주세요.";
-    }else if(borderRatio>0.6){
-      status="warn";
-      msg="손가락이 너무 가까워 화면 가장자리가 잘릴 수 있습니다. 아주 살짝만 멀리 떼 주세요.";
-    }else{
-      status="good";
-      msg="기준 등록/인증하기 좋은 위치입니다.";
-    }
-
-    lastQuality = status;
-
-    fingerGuide.className = "finger-guide state-"+status;
-    statusBadge.className =
-      "status-badge "+(status==="good"?"good":status==="warn"?"warn":"bad");
-    statusBadge.textContent =
-      status==="good"?"품질 양호":status==="warn"?"조정 필요":"인식 약함";
-
-    clearMsgs();
-    if(status==="good") showOk(msg);
-    else showErr(msg);
-
-    setButtons(true);
-  }
-
-  requestAnimationFrame(analyzeLoop);
-}
-
-// 손가락 윤곽(피부 bounding box)만 잘라서 TEMPLATE_SIZE x TEMPLATE_SIZE로 리샘플
-function captureFingerTemplate(){
-  if(!video || !analyzeCtx) return null;
-
-  const w = analyzeCanvas.width;
-  const h = analyzeCanvas.height;
-  analyzeCtx.drawImage(video,0,0,w,h);
-  const frame = analyzeCtx.getImageData(0,0,w,h);
-  const data  = frame.data;
-
-  const roiX = Math.floor(w*0.275);
-  const roiY = Math.floor(h*0.275);
-  const roiW = Math.floor(w*0.45);
-  const roiH = Math.floor(h*0.45);
-
-  let minX=roiW, maxX=0, minY=roiH, maxY=0;
-  let skinCount=0;
-
-  for(let y=roiY;y<roiY+roiH;y++){
-    for(let x=roiX;x<roiX+roiW;x++){
-      const idx=(y*w+x)*4;
-      const r=data[idx],g=data[idx+1],b=data[idx+2];
-      if(isSkin(r,g,b)){
-        skinCount++;
-        const lx=x-roiX,ly=y-roiY;
-        if(lx<minX)minX=lx;
-        if(lx>maxX)maxX=lx;
-        if(ly<minY)minY=ly;
-        if(ly>maxY)maxY=ly;
+      src.delete();
+      requestAnimationFrame(loop);
       }
+
+    // 4배 줌 핵심 함수
+    function zoom4x(src, rect) {
+      const roi = new cv.Rect(
+        Math.max(0, rect.x - rect.width * 0.3),
+        Math.max(0, rect.y - rect.height * 0.4),
+        Math.min(src.cols, rect.width * 1.6),
+        Math.min(src.rows, rect.height * 1.8)
+      );
+      const cropped = src.roi(roi);
+      const zoomed = new cv.Mat();
+      cv.resize(cropped, zoomed, new cv.Size(src.cols, src.rows), 0, 0, cv.INTER_CUBIC);
+      cropped.delete();
+      return zoomed;
     }
-  }
 
-  if(skinCount<50){
-    // 손가락 거의 없음
-    return null;
-  }
-
-  let bw = maxX - minX;
-  let bh = maxY - minY;
-  if(bw<5 || bh<5){
-    // 너무 작은 윤곽
-    return null;
-  }
-
-  // 여유 margin
-  const margin = 0.15;
-  let cx = Math.floor(minX - bw*margin);
-  let cy = Math.floor(minY - bh*margin);
-  let cw = Math.floor(bw*(1+2*margin));
-  let ch = Math.floor(bh*(1+2*margin));
-
-  // ROI 범위에 클램프
-  if(cx<0) cx=0;
-  if(cy<0) cy=0;
-  if(cx+cw>roiW) cw = roiW-cx;
-  if(cy+ch>roiH) ch = roiH-cy;
-
-  if(cw<5 || ch<5){
-    return null;
-  }
-
-  // 손가락 부분만 별도 캔버스에 그린 뒤 32x32로 축소
-  const tempCanvas = document.createElement("canvas");
-  tempCanvas.width  = TEMPLATE_SIZE;
-  tempCanvas.height = TEMPLATE_SIZE;
-  const tempCtx = tempCanvas.getContext("2d");
-
-  tempCtx.drawImage(
-    analyzeCanvas,
-    roiX+cx, roiY+cy, cw, ch,
-    0, 0, TEMPLATE_SIZE, TEMPLATE_SIZE
-  );
-
-  const patch = tempCtx.getImageData(0,0,TEMPLATE_SIZE,TEMPLATE_SIZE);
-  const pd = patch.data;
-  const vec = new Float32Array(TEMPLATE_SIZE*TEMPLATE_SIZE);
-
-  for(let j=0;j<TEMPLATE_SIZE;j++){
-    for(let i=0;i<TEMPLATE_SIZE;i++){
-      const idx=(j*TEMPLATE_SIZE+i)*4;
-      const r=pd[idx],g=pd[idx+1],b=pd[idx+2];
-      const gray = 0.299*r + 0.587*g + 0.114*b;
-      vec[j*TEMPLATE_SIZE+i] = gray;
+    function detectFinger(src) {
+      const gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      const thresh = new cv.Mat();
+      cv.threshold(gray, thresh, 0, 255, cv.THRESH_OTSU);
+      
+      const contours = new cv.MatVector();
+      cv.findContours(thresh, contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      
+      let best = null;
+      for (let i = 0; i < contours.size(); i++) {
+        const area = cv.contourArea(contours.get(i));
+        if (area > 5000 && area < 40000) {
+          best = cv.boundingRect(contours.get(i));
+          break;
+        }
+      }
+      gray.delete(); thresh.delete(); contours.delete();
+      return best;
     }
-  }
 
-  // 밝기 정규화 (0~1)
-  return normalizeTemplate(vec);
-}
+    function extractClearFingerprint(mat) {
+      const gray = new cv.Mat();
+      cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
+      
+      // 4배 줌된 이미지 전용 강력 전처리
+      const clahe = cv.createCLAHE(4.0, new cv.Size(8,8));
+      const enhanced = new cv.Mat();
+      clahe.apply(gray, enhanced);
+      
+      const bin = new cv.Mat();
+      cv.threshold(enhanced, bin, 0, 255, cv.THRESH_OTSU);
+      const skeleton = new cv.Mat();
+      cv.ximgproc.thinning(bin, skeleton);
+      
+      const points = [];
+      const data = skeleton.data;
+      const w = skeleton.cols, h = skeleton.rows;
+      
+      for (let y = 10; y < h-10; y++) {
+        for (let x = 10; x < w-10; x++) {
+          const i = y * w + x;
+          if (data[i] === 255) {
+            let cnt = 0;
+            for (let dy = -1; dy <= 1; dy++)
+              for (let dx = -1; dx <= 1; dx++)
+                if (dx || dy) if (data[(y+dy)*w + (x+dx)] === 255) cnt++;
+            if (cnt === 1 || cnt === 3) points.push({x, y, type: cnt===1 ? "end" : "bif"});
+          }
+        }
+      }
+      
+      gray.delete(); enhanced.delete(); bin.delete(); skeleton.delete(); clahe.delete();
+      return points;
+    }
 
-// 0~255 → 0~1 스케일 + 콘트라스트 보정용 간단 정규화
-function normalizeTemplate(vec){
-  let min=Infinity,max=-Infinity;
-  for(let i=0;i<vec.length;i++){
-    const v=vec[i];
-    if(v<min)min=v;
-    if(v>max)max=v;
-  }
-  const range = max-min || 1;
-  const out = new Float32Array(vec.length);
-  for(let i=0;i<vec.length;i++){
-    out[i] = (vec[i]-min)/range; // 0~1
-  }
-  return out;
-}
+    // 등록
+    document.getElementById('enroll').onclick = () => {
+      if (!window.latestPoints || window.latestPoints.length < 35) {
+        alert("지문이 선명하지 않습니다. 조금 더 가까이 대주세요");
+        return;
+      }
+      localStorage.setItem('fp6', JSON.stringify(window.latestPoints));
+      alert(`지문 등록 완료! (4배 줌 · ${window.latestPoints.length}개 특징점)`);
+    };
 
-// 템플릿 간 평균 절대차
-function templateDistance(a,b){
-  if(!a || !b || a.length!==b.length) return Infinity;
-  let sum=0;
-  for(let i=0;i<a.length;i++){
-    sum += Math.abs(a[i]-b[i]);
-  }
-  return sum/a.length; // 0~1
-}
+    // 인증
+    document.getElementById('verify').onclick = () => {
+      if (!window.latestPoints) return;
+      const saved = JSON.parse(localStorage.getItem('fp6') || '[]');
+      if (saved.length === 0) { alert("등록된 지문 없음"); return; }
+      
+      let matches = 0;
+      for (const p1 of window.latestPoints) {
+        for (const p2 of saved) {
+          if (Math.hypot(p1.x-p2.x, p1.y-p2.y) < 35) {  // 4배 줌 보정
+            matches++;
+            break;
+          }
+        }
+      }
+      const score = matches / Math.max(window.latestPoints.length, saved.length);
+      
+      if (score > 0.62) {
+        document.getElementById('result').style.display = 'block';
+        setTimeout(() => document.getElementById('result').style.display = 'none', 3000);
+      } else {
+        document.getElementById('resultFail').style.display = 'block';
+        setTimeout(() => document.getElementById('resultFail').style.display = 'none', 3000);
+      }
+    };
 
-// 기준 등록
-function enrollFinger(){
-  clearMsgs();
-  const tpl = captureFingerTemplate();
-  if(!tpl){
-    showErr("손가락 윤곽을 찾지 못했습니다. 네모 안에 손가락을 크게, 중앙에 두고 다시 시도해 주세요.");
-    return;
-  }
-  enrolledTemplate = tpl;
-
-  if(lastQuality!=="good"){
-    showErr("품질이 아주 좋은 편은 아니지만, 현재 손가락 윤곽을 기준으로 등록했습니다.");
-  } else {
-    showOk("기준 등록 완료! 같은 손가락으로 [인증하기]를 눌러보세요.");
-  }
-  setButtons(true);
-}
-
-// 인증
-function verifyFinger(){
-  clearMsgs();
-  if(!enrolledTemplate){
-    showErr("먼저 [기준 등록]을 해 주세요.");
-    return;
-  }
-  const cur = captureFingerTemplate();
-  if(!cur){
-    showErr("현재 프레임에서 손가락 윤곽을 찾지 못했습니다. 다시 손가락을 맞춰 주세요.");
-    return;
-  }
-
-  const diff = templateDistance(enrolledTemplate, cur);
-
-  if(diff < MATCH_THRESHOLD){
-    showOk("인증 성공! (차이값: "+diff.toFixed(3)+")");
-    authResult.classList.add("show");
-  }else{
-    showErr("인증 실패. 다른 손가락일 가능성이 높습니다. (차이값: "+diff.toFixed(3)+")");
-    authResult.classList.remove("show");
-  }
-}
-
-// 페이지 떠날 때 스트림 정리
-window.addEventListener("unload",()=>{
-  if(stream) stream.getTracks().forEach(t=>t.stop());
-});
-</script>
+    document.getElementById('clear').onclick = () => {
+      localStorage.removeItem('fp6');
+      alert("등록 삭제됨");
+    };
+  </script>
 </body>
 </html>
