@@ -1,272 +1,221 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AILee v3 Pro - 실제 지문 인식 + 등록 + 재인증</title>
-  
-  <!-- 라이선스 및 원작자 표시 (산업용 100% 합법) -->
-  <!--
-    AILee v3 Pro - Real Fingerprint Recognition (Touchless)
-    Copyright (c) 2025 당신이름 또는 회사명 (예: 주식회사 바이오테크)
+<script>
+/* ======================================================
+   AILee v2 Pro (MIT License)
+   바닐라 JS 기반 카메라 손가락 모양 분석 + 패턴 인증
+====================================================== */
 
-    Based on:
-    - OpenCV.js (Apache-2.0) - https://opencv.org
-    - FingerprintJS (MIT) - https://github.com/fingerprintjs/fingerprintjs
-    - 여러 오픈소스 지문 인식 알고리즘 (MIT/Apache)
+let stream=null,video=null,analyzeCanvas=null,analyzeCtx=null;
+let analyzing=false;
+let enrolledTemplate=null;
+let lastQuality='bad';
 
-    본 코드는 상업적 사용·수정·재배포 모두 허용됩니다.
-    전체 라이선스: 프로젝트 루트의 LICENSE 파일 참조
-  -->
+const TEMPLATE=32;
+const MATCH_THRESHOLD=15;
 
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box;}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f5f5;padding:10px;}
-    .container{max-width:500px;margin:0 auto;background:#fff;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.1);padding:20px;overflow:hidden;}
-    .header{text-align:center;padding:16px 0;border-bottom:2px solid #0070f2;margin-bottom:16px;}
-    .header h1{font-size:20px;color:#0070f2;}
-    .header p{font-size:13px;color:#555;margin-top:4px;}
-    .video-container{position:relative;background:#000;border-radius:12px;overflow:hidden;margin-bottom:12px;}
-    video{width:100%;display:block;}
-    .overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
-    canvas{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0.7;}
-    .guide-box{
-      position:absolute;top:50%;left:50%;width:50%;height:60%;transform:translate(-50%,-50%);
-      border:3px dashed #00c853;border-radius:16px;pointer-events:none;
-      box-shadow:0 0 0 9999px rgba(0,0,0,0.4);
-    }
-    .status{
-      position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
-      padding:8px 16px;border-radius:99px;background:rgba(0,0,0,0.7);color:#fff;font-size:14px;
-    }
-    .btn-group{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0;}
-    button{padding:14px;font-size:15px;font-weight:600;border:none;border-radius:12px;cursor:pointer;}
-    .btn-primary{background:#0070f2;color:#fff;}
-    .btn-success{background:#00c853;color:#fff;}
-    .btn-danger{background:#d32f2f;color:#fff;}
-    .btn-disabled{background:#ccc;cursor:not-allowed;}
-    .result{
-      position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-      padding:24px 40px;border-radius:20px;background:rgba(0,200,83,0.95);color:#fff;
-      font-size:24px;font-weight:bold;z-index:999;display:none;box-shadow:0 10px 40px rgba(0,0,0,0.5);
-    }
-    .result.show{display:block;animation:pop 0.4s;}
-    @keyframes pop{from{transform:translate(-50%,-50%) scale(0.5);opacity:0;}to{transform:translate(-50%,-50%) scale(1);opacity:1;}}
-    .hint{font-size:12px;color:#666;text-align:center;margin-top:12px;}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>AILee v3 Pro</h1>
-      <p>실제 지문 능선 인식 → 등록 → 재인증 (산업용 가능)</p>
-    </div>
+const infoMsg=document.getElementById("infoMessage");
+const errMsg=document.getElementById("errorMessage");
+const okMsg=document.getElementById("successMessage");
+const fingerGuide=document.getElementById("fingerGuide");
+const statusBadge=document.getElementById("statusBadge");
+const authOverlay=document.getElementById("authResult");
 
-    <div id="info" class="hint">손가락을 초록 박스에 맞추세요</div>
+function showInfo(t){infoMsg.textContent=t;infoMsg.classList.add("show");}
+function showErr(t){errMsg.textContent=t;errMsg.classList.add("show");}
+function showOk(t){okMsg.textContent=t;okMsg.classList.add("show");}
+function clearAll(){infoMsg.classList.remove("show");errMsg.classList.remove("show");okMsg.classList.remove("show");authOverlay.classList.remove("show");}
 
-    <div class="video-container">
-      <video id="video" autoplay playsinline muted></video>
-      <div class="overlay">
-        <canvas id="output"></canvas>
-        <div id="guide" class="guide-box"></div>
-        <div id="status" class="status">대기 중...</div>
-      </div>
-    </div>
+function setButtons(cameraOn){
+  document.getElementById("startBtn").disabled=cameraOn;
+  document.getElementById("stopBtn").disabled=!cameraOn;
 
-    <div class="btn-group">
-      <button id="start" class="btn-primary">카메라 시작</button>
-      <button id="stop" class="btn-danger btn-disabled" disabled>정지</button>
-    </div>
-    <div class="btn-group">
-      <button id="enroll" class="btn-success btn-disabled" disabled>지문 등록</button>
-      <button id="verify" class="btn-primary btn-disabled" disabled>지문 인증</button>
-    </div>
+  if(lastQuality==="good"){
+    document.getElementById("enrollBtn").disabled=false;
+  } else {
+    document.getElementById("enrollBtn").disabled=true;
+  }
 
-    <div id="result" class="result">지문 인증 성공!</div>
-  </div>
+  if(enrolledTemplate && lastQuality==="good"){
+    document.getElementById("verifyBtn").disabled=false;
+  } else {
+    document.getElementById("verifyBtn").disabled=true;
+  }
+}
 
-  <!-- OpenCV.js 로드 (Apache-2.0 라이선스) -->
-  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
+async function startCamera(){
+  clearAll();
+  showInfo("카메라 권한 요청 중...");
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:"environment",width:{ideal:1920},height:{ideal:1080}},
+      audio:false
+    });
+    video=document.getElementById("video");
+    video.srcObject=stream;
+    await video.play();
 
-  <script>
-    // 전역 변수
-    let stream = null, enrolledMinutiae = null;
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('output');
-    const ctx = canvas.getContext('2d');
-    let processing = false;
+    analyzeCanvas=document.getElementById("analyzeCanvas");
+    analyzeCtx=analyzeCanvas.getContext("2d");
 
-    function onOpenCvReady() {
-      document.getElementById('info').textContent = 'OpenCV.js 로드 완료! 시작 버튼을 누르세요';
-    }
+    document.getElementById("videoContainer").style.display="block";
 
-    async function startCamera() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
-        });
-        video.srcObject = stream;
-        video.play();
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        document.getElementById('start').disabled = true;
-        document.getElementById('stop').disabled = false;
-        document.getElementById('stop').classList.remove('btn-disabled');
-        processing = true;
-        processFrame();
-      } catch (e) {
-        alert("카메라 오류: " + e.message);
-      }
-    }
+    analyzing=true;
+    analyze();
 
-    function stopCamera() {
-      processing = false;
-      if (stream) stream.getTracks().forEach(t => t.stop());
-      video.srcObject = null;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      document.getElementById('start').disabled = false;
-      document.getElementById('stop').disabled = true;
-      document.getElementById('stop').classList.add('btn-disabled');
-    }
+    showInfo("손가락을 가운데 네모에 맞춰주세요.");
+    setButtons(true);
 
-    function processFrame() {
-      if (!processing) return;
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
+  }catch(e){
+    showErr("카메라 접근 실패: "+e.message);
+  }
+}
 
-        const src = cv.imread(canvas);
-        const gray = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+function stopCamera(){
+  analyzing=false;
+  if(stream){
+    stream.getTracks().forEach(t=>t.stop());
+  }
+  document.getElementById("videoContainer").style.display="none";
+  lastQuality='bad';
+  authOverlay.classList.remove("show");
+  showInfo("카메라를 종료했습니다.");
+  setButtons(false);
+}
 
-        // 지문 능선 강조 (Gabor + Laplacian)
-        const enhanced = enhanceFingerprint(gray);
-        const binary = new cv.Mat();
-        cv.threshold(enhanced, binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+function isSkin(r,g,b){
+  const max=Math.max(r,g,b),min=Math.min(r,g,b);
+  return(
+    r>80 && g>40 && b>20 &&
+    r>=g && r>=b &&
+    (max-min)>15
+  );
+}
 
-        // Minutiae 추출
-        const minutiae = extractMinutiae(binary);
+function analyze(){
+  if(!analyzing){return;}
+  if(video.readyState>=2){
+    const w=analyzeCanvas.width,h=analyzeCanvas.height;
+    analyzeCtx.drawImage(video,0,0,w,h);
+    const d=analyzeCtx.getImageData(0,0,w,h).data;
 
-        // 시각화
-        cv.imshow(canvas, binary);
-        drawMinutiae(minutiae);
+    const rx=Math.floor(w*0.275),ry=Math.floor(h*0.275);
+    const rw=Math.floor(w*0.45),rh=Math.floor(h*0.45);
 
-        // 품질 체크
-        const quality = minutiae.length > 15 ? "good" : "bad";
-        document.getElementById('status').textContent = 
-          quality === "good" ? "지문 품질 양호 (등록/인증 가능)" : "손가락을 더 가까이 대주세요";
+    let skin=0,total=0;
+    let minX=rw,maxX=0,minY=rh,maxY=0;
 
-        // 버튼 활성화
-        document.getElementById('enroll').disabled = quality !== "good";
-        document.getElementById('verify').disabled = quality !== "good" || !enrolledMinutiae;
-        document.getElementById('enroll').classList.toggle('btn-disabled', quality !== "good");
-
-        src.delete(); gray.delete(); enhanced.delete(); binary.delete();
-      }
-      requestAnimationFrame(processFrame);
-    }
-
-    function enhanceFingerprint(img) {
-      const blurred = new cv.Mat();
-      cv.GaussianBlur(img, blurred, new cv.Size(5,5), 0);
-      const equalized = new cv.Mat();
-      cv.equalizeHist(blurred, equalized);
-
-      // Gabor 필터 (간소화)
-      const gabor = cv.getGaborKernel(new cv.Size(21,21), 5, Math.PI/4, 10, 1, 0, cv.CV_32F);
-      const filtered = new cv.Mat();
-      cv.filter2D(equalized, filtered, cv.CV_8UC1, gabor);
-
-      blurred.delete(); equalized.delete(); gabor.delete();
-      return filtered;
-    }
-
-    function extractMinutiae(bin) {
-      const skeleton = new cv.Mat();
-      cv.ximgproc.thinning(bin, skeleton);
-
-      const points = [];
-      const mat = skeleton.data;
-      const w = skeleton.cols, h = skeleton.rows;
-
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          const i = y * w + x;
-          if (mat[i] === 255) {
-            let count = 0;
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue;
-                if (mat[(y+dy)*w + (x+dx)] === 255) count++;
-              }
-            }
-            if (count === 1 || count === 3) {
-              points.push({x, y, type: count === 1 ? "end" : "bifurcation"});
-            }
-          }
+    for(let y=ry;y<ry+rh;y++){
+      for(let x=rx;x<rx+rw;x++){
+        const i=(y*w+x)*4;
+        const r=d[i],g=d[i+1],b=d[i+2];
+        total++;
+        if(isSkin(r,g,b)){
+          skin++;
+          const lx=x-rx,ly=y-ry;
+          if(lx<minX)minX=lx;if(lx>maxX)maxX=lx;
+          if(ly<minY)minY=ly;if(ly>maxY)maxY=ly;
         }
       }
-      skeleton.delete();
-      return points;
     }
 
-    function drawMinutiae(points) {
-      for (const p of points) {
-        ctx.fillStyle = p.type === "end" ? "#00ff00" : "#ffff00";
-        ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
-      }
-    }
+    const ratio=skin/total;
+    let status="bad",msg="";
 
-    function enroll() {
-      const current = cv.imread(canvas);
-      const bin = new cv.Mat();
-      cv.cvtColor(current, bin, cv.COLOR_RGBA2GRAY);
-      cv.threshold(bin, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
-      enrolledMinutiae = extractMinutiae(bin);
-      alert(`지문 등록 완료! (${enrolledMinutiae.length}개 특징점)`);
-      current.delete(); bin.delete();
-    }
+    if(ratio<0.05){
+      status="bad";
+      msg="손가락이 잘 보이지 않습니다. 네모 안쪽에 더 맞춰주세요.";
+    } else {
+      const w2=maxX-minX,h2=maxY-minY;
+      const area=w2*h2,roi=rw*rh;
+      const ar=area/roi;
+      const cx=(minX+maxX)/2/rw,cy=(minY+maxY)/2/rh;
 
-    function verify() {
-      if (!enrolledMinutiae) return;
-      const current = cv.imread(canvas);
-      const bin = new cv.Mat();
-      cv.cvtColor(current, bin, cv.COLOR_RGBA2GRAY);
-      cv.threshold(bin, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
-      const currentMinutiae = extractMinutiae(bin);
-
-      const matchCount = matchMinutiae(enrolledMinutiae, currentMinutiae);
-      const score = matchCount / Math.max(enrolledMinutiae.length, currentMinutiae.length);
-
-      if (score > 0.6) {
-        document.getElementById('result').classList.add('show');
-        setTimeout(() => document.getElementById('result').classList.remove('show'), 3000);
+      if(Math.abs(cx-0.5)>0.2 || Math.abs(cy-0.5)>0.2){
+        status="warn";
+        msg="손가락이 중앙에서 벗어났습니다.";
+      } else if(ar<0.15){
+        status="warn";
+        msg="손가락이 너무 멀리 있습니다.";
+      } else if(ar>0.5){
+        status="warn";
+        msg="손가락이 너무 가까이 있습니다.";
       } else {
-        alert(`인증 실패 (유사도: ${(score*100).toFixed(1)}%)`);
+        status="good";
+        msg="등록/인증하기 좋은 상태입니다.";
       }
-      current.delete(); bin.delete();
     }
 
-    function matchMinutiae(a, b) {
-      let count = 0;
-      for (const pa of a) {
-        for (const pb of b) {
-          const dist = Math.hypot(pa.x - pb.x, pa.y - pb.y);
-          if (dist < 15 && pa.type === pb.type) {
-            count++;
-            break;
-          }
-        }
-      }
-      return count;
-    }
+    lastQuality=status;
 
-    // 버튼 연결
-    document.getElementById('start').onclick = startCamera;
-    document.getElementById('stop').onclick = stopCamera;
-    document.getElementById('enroll').onclick = enroll;
-    document.getElementById('verify').onclick = verify;
-  </script>
+    fingerGuide.className="finger-guide state-"+status;
+    statusBadge.className="status-badge "+(status==="good"?"good":status==="warn"?"warn":"bad");
+    statusBadge.textContent =
+      status==="good"?"품질 양호":
+      status==="warn"?"조정 필요":"인식 약함";
+
+    if(status==="good"){ showOk(msg); }
+    else{ showErr(msg); okMsg.classList.remove("show"); authOverlay.classList.remove("show"); }
+
+    setButtons(true);
+  }
+  requestAnimationFrame(analyze);
+}
+
+function captureTemplate(){
+  const w=analyzeCanvas.width,h=analyzeCanvas.height;
+  analyzeCtx.drawImage(video,0,0,w,h);
+  const d=analyzeCtx.getImageData(0,0,w,h).data;
+
+  const rx=Math.floor(w*0.275),ry=Math.floor(h*0.275);
+  const rw=Math.floor(w*0.45),rh=Math.floor(h*0.45);
+
+  const tpl=new Float32Array(TEMPLATE*TEMPLATE);
+
+  const stepX=rw/TEMPLATE,stepY=rh/TEMPLATE;
+  let k=0;
+
+  for(let j=0;j<TEMPLATE;j++){
+    for(let i=0;i<TEMPLATE;i++){
+      const x=Math.floor(rx+i*stepX);
+      const y=Math.floor(ry+j*stepY);
+      const idx=(y*w+x)*4;
+      const r=d[idx],g=d[idx+1],b=d[idx+2];
+      const gray=0.299*r+0.587*g+0.114*b;
+      tpl[k++]=gray;
+    }
+  }
+
+  return tpl;
+}
+
+function enrollFinger(){
+  if(lastQuality!=="good"){return showErr("품질이 좋을 때만 등록할 수 있습니다.");}
+  enrolledTemplate=captureTemplate();
+  showOk("기준 등록 완료. 이제 같은 손가락으로 인증해보세요.");
+}
+
+function verifyFinger(){
+  if(!enrolledTemplate){return showErr("먼저 기준을 등록하세요.");}
+  if(lastQuality!=="good"){return showErr("품질이 좋을 때만 인증할 수 있습니다.");}
+
+  const current=captureTemplate();
+  let diff=0;
+  for(let i=0;i<current.length;i++){
+    diff+=Math.abs(current[i]-enrolledTemplate[i]);
+  }
+  diff/=current.length;
+
+  if(diff<MATCH_THRESHOLD){
+    showOk("인증 성공! 동일한 손가락으로 확인되었습니다.");
+    authOverlay.classList.add("show");
+  } else {
+    showErr("인증 실패. 다른 손가락입니다. (차이: "+diff.toFixed(1)+")");
+    authOverlay.classList.remove("show");
+  }
+}
+
+window.addEventListener("unload",()=>{
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+});
+</script>
 </body>
 </html>
