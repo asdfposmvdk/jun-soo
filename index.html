@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🤖 AILee v2 - 지문선 강조 필터</title>
+  <title>🤖 AILee v3 - 촬영 UX 가이드</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:#f5f5f5;padding:10px;}
@@ -15,10 +15,17 @@
     .message.show{display:block;}
     .message.info{background:#e7f3ff;border-left:4px solid #0070d2;color:#0070d2;}
     .message.error{background:#fef1f0;border-left:4px solid #c23030;color:#c23030;}
+    .message.success{background:#dffcf0;border-left:4px solid #04844b;color:#04844b;}
+
     .video-container{position:relative;width:100%;max-width:480px;margin:0 auto 8px;background:#000;border-radius:10px;overflow:hidden;display:none;}
     video{width:100%;height:auto;display:block;object-fit:contain;background:#000;}
     .video-label{position:absolute;top:8px;left:8px;padding:4px 8px;border-radius:4px;background:rgba(0,0,0,0.6);color:#eee;font-size:11px;}
-    .finger-guide{position:absolute;top:50%;left:50%;width:45%;height:45%;transform:translate(-50%,-50%);border-radius:12px;border:2px dashed rgba(255,255,255,0.9);pointer-events:none;}
+    .finger-guide{position:absolute;top:50%;left:50%;width:45%;height:45%;transform:translate(-50%,-50%);border-radius:12px;border:3px dashed rgba(255,255,255,0.9);pointer-events:none;transition:.15s;}
+    .finger-guide.good{border-color:#00c853;background:rgba(0,200,83,0.08);}
+    .finger-guide.warn{border-color:#ffb300;background:rgba(255,179,0,0.08);}
+    .finger-guide.bad{border-color:#e53935;background:rgba(229,57,53,0.05);}
+    .status-badge{position:absolute;bottom:8px;right:8px;padding:4px 8px;border-radius:999px;font-size:11px;color:#fff;background:rgba(0,0,0,0.7);}
+
     .button-group{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
     button{padding:10px 12px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;min-height:40px;}
     .btn-brand{background:#0070d2;color:#fff;}
@@ -26,86 +33,69 @@
     .btn-cancel{background:#e0e0e0;color:#333;}
     .btn-cancel:hover{background:#d0d0d0;}
     .btn-disabled{background:#ccc !important;cursor:not-allowed !important;}
-    .preview-area{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
-    .preview-box{flex:1 1 45%;border:1px solid #ddd;border-radius:8px;padding:6px;text-align:center;font-size:11px;}
-    .preview-box canvas{width:100%;height:auto;background:#222;border-radius:4px;}
-    #hiddenCanvas{display:none;}
+
+    #analyzeCanvas{display:none;}
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>🤖 AILee v2</h1>
-      <p>손가락 지문 영역을 캡처해서 지문선을 강조해 보여주는 데모</p>
+      <h1>🤖 AILee v3</h1>
+      <p>거리 · 위치 · 조명을 실시간으로 평가해주는 촬영 가이드</p>
     </div>
 
     <div id="infoMessage" class="message info show">
-      카메라를 켠 뒤, 손가락을 네모 안에 맞추고 [지문 강조 캡처]를 눌러보세요.
+      [시작]을 누르고 손가락을 네모 안에 맞춰보세요. 어떤 점이 안 좋은지 실시간으로 알려줘요.
     </div>
     <div id="errorMessage" class="message error"></div>
+    <div id="successMessage" class="message success"></div>
 
     <div id="videoContainer" class="video-container">
       <video id="video" autoplay playsinline muted></video>
-      <div class="video-label">📷 손가락을 네모 안에 맞추세요</div>
-      <div class="finger-guide"></div>
+      <div class="video-label">📷 촬영 가이드 모드</div>
+      <div id="fingerGuide" class="finger-guide"></div>
+      <div id="statusBadge" class="status-badge">대기 중</div>
     </div>
 
-    <canvas id="hiddenCanvas" width="320" height="240"></canvas>
+    <canvas id="analyzeCanvas" width="160" height="120"></canvas>
 
     <div class="button-group">
       <button id="startBtn" class="btn-brand" onclick="startCamera()">📷 시작</button>
       <button id="stopBtn" class="btn-cancel btn-disabled" onclick="stopCamera()" disabled>❌ 종료</button>
     </div>
-    <div class="button-group">
-      <button id="captureBtn" class="btn-brand btn-disabled" onclick="captureAndFilter()" disabled>✨ 지문 강조 캡처</button>
-      <button class="btn-cancel" onclick="clearPreview()">🧹 지우기</button>
-    </div>
-
-    <div class="preview-area">
-      <div class="preview-box">
-        <div>원본 손가락 ROI</div>
-        <canvas id="roiCanvas" width="160" height="160"></canvas>
-      </div>
-      <div class="preview-box">
-        <div>지문선 강조(엣지 필터)</div>
-        <canvas id="edgeCanvas" width="160" height="160"></canvas>
-      </div>
-    </div>
   </div>
 
   <script>
-    let stream=null,video=null,hiddenCanvas=null,hiddenCtx=null;
+    let stream=null,video=null,analyzeCanvas=null,analyzeCtx=null,analyzing=false;
     const infoMessage=document.getElementById("infoMessage");
     const errorMessage=document.getElementById("errorMessage");
+    const successMessage=document.getElementById("successMessage");
     const videoContainer=document.getElementById("videoContainer");
+    const fingerGuide=document.getElementById("fingerGuide");
+    const statusBadge=document.getElementById("statusBadge");
     const startBtn=document.getElementById("startBtn");
     const stopBtn=document.getElementById("stopBtn");
-    const captureBtn=document.getElementById("captureBtn");
-    const roiCanvas=document.getElementById("roiCanvas");
-    const roiCtx=roiCanvas.getContext("2d");
-    const edgeCanvas=document.getElementById("edgeCanvas");
-    const edgeCtx=edgeCanvas.getContext("2d");
 
-    function setInfo(msg){infoMessage.textContent=msg;infoMessage.classList.add("show");}
+    function setInfo(m){infoMessage.textContent=m;infoMessage.classList.add("show");}
     function clearInfo(){infoMessage.classList.remove("show");}
-    function setError(msg){errorMessage.textContent=msg;errorMessage.classList.add("show");}
+    function setError(m){errorMessage.textContent=m;errorMessage.classList.add("show");}
     function clearError(){errorMessage.classList.remove("show");}
+    function setSuccess(m){successMessage.textContent=m;successMessage.classList.add("show");}
+    function clearSuccess(){successMessage.classList.remove("show");}
 
     function setButtons(running){
       if(running){
         startBtn.disabled=true;startBtn.classList.add("btn-disabled");
         stopBtn.disabled=false;stopBtn.classList.remove("btn-disabled");
-        captureBtn.disabled=false;captureBtn.classList.remove("btn-disabled");
       }else{
         startBtn.disabled=false;startBtn.classList.remove("btn-disabled");
         stopBtn.disabled=true;stopBtn.classList.add("btn-disabled");
-        captureBtn.disabled=true;captureBtn.classList.add("btn-disabled");
       }
     }
 
     async function startCamera(){
       try{
-        clearError();
+        clearError();clearSuccess();
         setInfo("카메라 권한을 요청 중입니다...");
         const constraints={
           video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},
@@ -113,13 +103,15 @@
         };
         stream=await navigator.mediaDevices.getUserMedia(constraints);
         video=document.getElementById("video");
-        hiddenCanvas=document.getElementById("hiddenCanvas");
-        hiddenCtx=hiddenCanvas.getContext("2d");
+        analyzeCanvas=document.getElementById("analyzeCanvas");
+        analyzeCtx=analyzeCanvas.getContext("2d");
         video.srcObject=stream;
         await video.play();
         videoContainer.style.display="block";
+        analyzing=true;
         setButtons(true);
-        setInfo("손가락을 네모 안에 맞추고 [지문 강조 캡처]를 눌러보세요.");
+        setInfo("손가락을 네모 안에 맞추고, 아래 메시지 보고 거리/위치/조명을 조정해보세요.");
+        requestAnimationFrame(analyzeLoop);
       }catch(e){
         setError("카메라 사용 불가: "+e.message);
         setButtons(false);
@@ -127,67 +119,105 @@
     }
 
     function stopCamera(){
+      analyzing=false;
       if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
       if(video){video.srcObject=null;}
       videoContainer.style.display="none";
+      fingerGuide.className="finger-guide";
+      statusBadge.textContent="대기 중";
       setButtons(false);
       setInfo("카메라가 종료되었습니다.");
+      clearError();clearSuccess();
     }
 
-    function clearPreview(){
-      roiCtx.clearRect(0,0,roiCanvas.width,roiCanvas.height);
-      edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
-      clearError();setInfo("미리보기를 지웠습니다. 다시 캡처해보세요.");
+    function isSkinPixel(r,g,b){
+      const max=Math.max(r,g,b),min=Math.min(r,g,b),diff=max-min;
+      return (r>80&&g>40&&b>20&&r>=g&&r>=b&&diff>15&&!(r>230&&g>230&&b>230));
     }
 
-    function captureAndFilter(){
-      clearError();
-      if(!video||video.readyState<2){setError("영상이 준비되지 않았습니다.");return;}
-      const vw=hiddenCanvas.width,vh=hiddenCanvas.height;
-      hiddenCtx.drawImage(video,0,0,vw,vh);
-      const frame=hiddenCtx.getImageData(0,0,vw,vh);
-      const data=frame.data;
-      const roiX=Math.floor(vw*0.275),roiY=Math.floor(vh*0.275),
-            roiW=Math.floor(vw*0.45),roiH=Math.floor(vh*0.45);
-
-      // 1) ROI를 정사각형으로 축소해서 roiCanvas에 그리기
-      const tmpCanvas=document.createElement("canvas");
-      tmpCanvas.width=roiW;tmpCanvas.height=roiH;
-      const tmpCtx=tmpCanvas.getContext("2d");
-      tmpCtx.putImageData(frame,-roiX,-roiY);
-      roiCtx.drawImage(tmpCanvas,0,0,roiW,roiH,0,0,roiCanvas.width,roiCanvas.height);
-
-      // 2) 엣지 필터 적용(Sobel)
-      const src=roiCtx.getImageData(0,0,roiCanvas.width,roiCanvas.height);
-      const dst=edgeCtx.createImageData(src.width,src.height);
-      const w=src.width,h=src.height,sData=src.data,dData=dst.data;
-
-      function grayAt(x,y){
-        if(x<0||y<0||x>=w||y>=h)return 0;
-        const i=(y*w+x)*4;
-        return 0.299*sData[i]+0.587*sData[i+1]+0.114*sData[i+2];
+    function analyzeLoop(){
+      if(!analyzing||!video||video.readyState<2){
+        if(analyzing)requestAnimationFrame(analyzeLoop);
+        return;
       }
+      const w=analyzeCanvas.width,h=analyzeCanvas.height;
+      analyzeCtx.drawImage(video,0,0,w,h);
+      const frame=analyzeCtx.getImageData(0,0,w,h),data=frame.data;
 
-      for(let y=0;y<h;y++){
-        for(let x=0;x<w;x++){
-          const gx=
-            -1*grayAt(x-1,y-1)+1*grayAt(x+1,y-1)+
-            -2*grayAt(x-1,y  )+2*grayAt(x+1,y  )+
-            -1*grayAt(x-1,y+1)+1*grayAt(x+1,y+1);
-          const gy=
-            -1*grayAt(x-1,y-1)-2*grayAt(x,y-1)-1*grayAt(x+1,y-1)+
-             1*grayAt(x-1,y+1)+2*grayAt(x,y+1)+1*grayAt(x+1,y+1);
-          let mag=Math.sqrt(gx*gx+gy*gy);
-          mag=Math.min(255,mag*1.5);
-          const t=100;
-          const v=mag>t?255:0;
+      const roiX=Math.floor(w*0.275),roiY=Math.floor(h*0.275),
+            roiW=Math.floor(w*0.45),roiH=Math.floor(h*0.45);
+
+      let skinCount=0,totalCount=0,minX=roiW,maxX=0,minY=roiH,maxY=0;
+      let brightSum=0; // 밝기 평균용
+
+      for(let y=roiY;y<roiY+roiH;y++){
+        for(let x=roiX;x<roiX+roiW;x++){
           const idx=(y*w+x)*4;
-          dData[idx]=dData[idx+1]=dData[idx+2]=v;
-          dData[idx+3]=255;
+          const r=data[idx],g=data[idx+1],b=data[idx+2];
+          totalCount++;
+          const gray=0.299*r+0.587*g+0.114*b;
+          brightSum+=gray;
+          if(isSkinPixel(r,g,b)){
+            skinCount++;
+            const lx=x-roiX,ly=y-roiY;
+            if(lx<minX)minX=lx;if(lx>maxX)maxX=lx;
+            if(ly<minY)minY=ly;if(ly>maxY)maxY=ly;
+          }
         }
       }
-      edgeCtx.putImageData(dst,0,0);
-      setInfo("지문선을 강조해서 오른쪽에 표시했습니다. 너무 흐리면 거리/각도를 조정해서 다시 찍어보세요.");
+
+      const brightness=brightSum/totalCount; // 0~255
+      const skinRatio=skinCount/totalCount;
+      let status="bad",msg="",badge="나쁨";
+
+      // 1) 조명 체크 먼저
+      if(brightness<70){
+        status="bad";
+        msg="화면이 너무 어둡습니다. 방 조명을 켜거나 창가 쪽으로 이동해 주세요.";
+      }else if(brightness>200){
+        status="bad";
+        msg="너무 밝거나 빛이 강하게 반사되고 있습니다. 직사광선을 피하고 손가락에 비치는 강한 빛을 줄여주세요.";
+      }else if(skinRatio<0.05){
+        status="bad";
+        msg="손가락이 잘 보이지 않습니다. 네모 안으로 손가락을 가져오고, 카메라와의 거리를 조금 더 가깝게 맞춰주세요.";
+      }else{
+        // 2) 거리/위치 평가
+        const width=maxX-minX,height=maxY-minY,area=width*height,roiArea=roiW*roiH;
+        const areaRatio=area/roiArea;
+        const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
+        const nx=cx/roiW,ny=cy/roiH;
+        const centerOffX=Math.abs(nx-0.5),centerOffY=Math.abs(ny-0.5);
+
+        if(centerOffX>0.25||centerOffY>0.25){
+          status="warn";
+          msg="손가락 위치가 가운데에서 많이 벗어났습니다. 네모 중앙에 손가락 끝이 오도록 맞춰주세요.";
+        }else if(areaRatio<0.12){
+          status="warn";
+          msg="손가락이 너무 멉니다. 카메라 쪽으로 조금 더 가까이 가져와 주세요(너무 가깝게는 X).";
+        }else if(areaRatio>0.55){
+          status="warn";
+          msg="손가락이 너무 가깝습니다. 화면에서 손가락이 너무 크게 보이면 1~2cm 정도 뒤로 빼주세요.";
+        }else{
+          status="good";
+          msg="지문을 촬영하기에 좋은 거리/위치/조명입니다. 이 상태에서 캡처/등록 기능을 사용하면 됩니다.";
+        }
+      }
+
+      // UI 반영
+      fingerGuide.className="finger-guide " + (status==="good"?"good":status==="warn"?"warn":"bad");
+      statusBadge.textContent=
+        status==="good" ? "양호" :
+        status==="warn" ? "조정 필요" : "나쁨";
+
+      if(status==="good"){
+        setSuccess(msg);clearError();
+      }else if(status==="warn"){
+        clearSuccess();setError(msg);
+      }else{
+        clearSuccess();setError(msg);
+      }
+
+      if(analyzing)requestAnimationFrame(analyzeLoop);
     }
 
     window.addEventListener("unload",()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
