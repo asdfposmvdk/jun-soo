@@ -3,18 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AILee v2 Pro - 카메라 기반 손가락 인증 데모</title>
+  <title>AILee v2 Pro - 카메라 기반 손가락 인증</title>
 
   <!--
     AILee v2 Pro - Touchless Finger Pattern Recognition Demo
-    Copyright (c) 2025 깽호
-
-    Licensed under the MIT License.
-    Permission is hereby granted, free of charge, to use, copy, modify,
-    merge, publish, distribute, sublicense, and sell copies of this software.
-
-    본 코드는 외부 오픈소스의 실제 코드 블록을 포함하지 않으며,
-    카메라 영상 처리·광도 패턴 기반 분석 로직은 직접 작성된 바닐라 JS입니다.
+    MIT License (c) 2025 깽호
   -->
 
   <style>
@@ -39,7 +32,6 @@
       position:absolute;top:50%;left:50%;
       width:45%;height:45%;transform:translate(-50%,-50%);
       border-radius:12px;border:3px dashed rgba(255,255,255,0.9);
-      box-shadow:0 0 0 2px rgba(0,0,0,0.3);
       pointer-events:none;transition:.15s;
     }
     .finger-guide.state-idle{border-color:rgba(255,255,255,0.9);}
@@ -83,10 +75,10 @@
   <div class="container">
     <div class="header">
       <h1>AILee v2 Pro</h1>
-      <p>손가락 패턴 기반 카메라 인증 (MIT License)</p>
+      <p>카메라 기반 손가락 패턴 인증 (MIT License)</p>
     </div>
 
-    <div id="infoMessage" class="message info show">카메라를 켜고, 손가락을 네모 안에 맞추세요.</div>
+    <div id="infoMessage" class="message info show">카메라를 켜고, 손가락을 네모 안에 맞춰보세요.</div>
     <div id="errorMessage" class="message error"></div>
     <div id="successMessage" class="message success"></div>
 
@@ -102,66 +94,72 @@
 
     <div class="button-group">
       <button id="startBtn" class="btn-brand" onclick="startCamera()">시작</button>
-      <button id="stopBtn" class="btn-cancel btn-disabled" onclick="stopCamera()" disabled>종료</button>
+      <button id="stopBtn" class="btn-cancel btn-disabled" onclick="stopCamera()">종료</button>
     </div>
 
     <div class="button-group">
-      <button id="enrollBtn" class="btn-brand btn-disabled" onclick="enrollFinger()" disabled>기준 등록</button>
-      <button id="verifyBtn" class="btn-brand btn-disabled" onclick="verifyFinger()" disabled>인증하기</button>
+      <button id="enrollBtn" class="btn-brand btn-disabled" onclick="enrollFinger()">기준 등록</button>
+      <button id="verifyBtn" class="btn-brand btn-disabled" onclick="verifyFinger()">인증하기</button>
     </div>
   </div>
 
 <script>
-/* ======================================================
-   AILee v2 Pro (MIT License)
-   바닐라 JS 기반 카메라 손가락 모양 분석 + 패턴 인증
-====================================================== */
+/* =========================================
+   AILee v2 Pro - MIT License
+   카메라 손가락 패턴 등록/인증 (완전 동작)
+========================================= */
 
-let stream=null,video=null,analyzeCanvas=null,analyzeCtx=null;
+let stream=null;
+let video=null;
+let analyzeCanvas=null;
+let analyzeCtx=null;
 let analyzing=false;
+
 let enrolledTemplate=null;
-let lastQuality='bad';
+let lastQuality="bad";
 
-const TEMPLATE=32;
-const MATCH_THRESHOLD=15;
+const TEMPLATE = 32;
+const MATCH_THRESHOLD = 15;
 
-const infoMsg=document.getElementById("infoMessage");
-const errMsg=document.getElementById("errorMessage");
-const okMsg=document.getElementById("successMessage");
-const fingerGuide=document.getElementById("fingerGuide");
-const statusBadge=document.getElementById("statusBadge");
-const authOverlay=document.getElementById("authResult");
+// 메시지 핸들링
+function showInfo(t){infoMessage.textContent=t;infoMessage.classList.add("show");errorMessage.classList.remove("show");successMessage.classList.remove("show");}
+function showErr(t){errorMessage.textContent=t;errorMessage.classList.add("show");successMessage.classList.remove("show");}
+function showOk(t){successMessage.textContent=t;successMessage.classList.add("show");errorMessage.classList.remove("show");}
+function clearMsgs(){infoMessage.classList.remove("show");errorMessage.classList.remove("show");successMessage.classList.remove("show");authResult.classList.remove("show");}
 
-function showInfo(t){infoMsg.textContent=t;infoMsg.classList.add("show");}
-function showErr(t){errMsg.textContent=t;errMsg.classList.add("show");}
-function showOk(t){okMsg.textContent=t;okMsg.classList.add("show");}
-function clearAll(){infoMsg.classList.remove("show");errMsg.classList.remove("show");okMsg.classList.remove("show");authOverlay.classList.remove("show");}
-
+// 버튼 활성화
 function setButtons(cameraOn){
-  document.getElementById("startBtn").disabled=cameraOn;
-  document.getElementById("stopBtn").disabled=!cameraOn;
+  const startBtn=document.getElementById("startBtn");
+  const stopBtn=document.getElementById("stopBtn");
+  const enrollBtn=document.getElementById("enrollBtn");
+  const verifyBtn=document.getElementById("verifyBtn");
 
-  if(lastQuality==="good"){
-    document.getElementById("enrollBtn").disabled=false;
-  } else {
-    document.getElementById("enrollBtn").disabled=true;
-  }
+  // 시작/종료
+  startBtn.disabled = cameraOn;
+  stopBtn.disabled  = !cameraOn;
+  stopBtn.classList.toggle("btn-disabled", !cameraOn);
 
-  if(enrolledTemplate && lastQuality==="good"){
-    document.getElementById("verifyBtn").disabled=false;
-  } else {
-    document.getElementById("verifyBtn").disabled=true;
-  }
+  // 기준 등록 버튼 = 카메라만 켜지면 항상 활성화
+  enrollBtn.disabled = !cameraOn;
+  enrollBtn.classList.toggle("btn-disabled", !cameraOn);
+
+  // 인증하기 버튼 = 기준 템플릿이 존재해야 활성화
+  const canVerify = cameraOn && enrolledTemplate;
+  verifyBtn.disabled = !canVerify;
+  verifyBtn.classList.toggle("btn-disabled", !canVerify);
 }
 
+// 카메라 시작
 async function startCamera(){
-  clearAll();
+  clearMsgs();
   showInfo("카메라 권한 요청 중...");
+
   try{
     stream=await navigator.mediaDevices.getUserMedia({
       video:{facingMode:"environment",width:{ideal:1920},height:{ideal:1080}},
       audio:false
     });
+
     video=document.getElementById("video");
     video.srcObject=stream;
     await video.play();
@@ -173,158 +171,116 @@ async function startCamera(){
 
     analyzing=true;
     analyze();
+    showInfo("손가락을 네모 안에 맞춰주세요.");
 
-    showInfo("손가락을 가운데 네모에 맞춰주세요.");
     setButtons(true);
 
   }catch(e){
-    showErr("카메라 접근 실패: "+e.message);
+    showErr("카메라 오류: "+e.message);
   }
 }
 
+// 카메라 종료
 function stopCamera(){
   analyzing=false;
   if(stream){
     stream.getTracks().forEach(t=>t.stop());
   }
   document.getElementById("videoContainer").style.display="none";
-  lastQuality='bad';
-  authOverlay.classList.remove("show");
   showInfo("카메라를 종료했습니다.");
   setButtons(false);
+  lastQuality="bad";
 }
 
+// 피부 판단 (간단 모델)
 function isSkin(r,g,b){
-  const max=Math.max(r,g,b),min=Math.min(r,g,b);
-  return(
-    r>80 && g>40 && b>20 &&
-    r>=g && r>=b &&
-    (max-min)>15
-  );
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
+  return r>80 && g>40 && b>20 && r>=g && r>=b && (mx-mn)>15;
 }
 
+// 메인 분석 루프
 function analyze(){
-  if(!analyzing){ return; }
-  if(!video || video.readyState < 2){
-    requestAnimationFrame(analyze);
-    return;
-  }
+  if(!analyzing) return;
 
-  const w = analyzeCanvas.width;
-  const h = analyzeCanvas.height;
-  analyzeCtx.drawImage(video, 0, 0, w, h);
-  const frame = analyzeCtx.getImageData(0, 0, w, h);
-  const data = frame.data;
+  if(video.readyState>=2){
+    const w=analyzeCanvas.width,h=analyzeCanvas.height;
+    analyzeCtx.drawImage(video,0,0,w,h);
+    const data=analyzeCtx.getImageData(0,0,w,h).data;
 
-  // ROI (네모)
-  const roiX = Math.floor(w * 0.275);
-  const roiY = Math.floor(h * 0.275);
-  const roiW = Math.floor(w * 0.45);
-  const roiH = Math.floor(h * 0.45);
+    const rx=Math.floor(w*0.275),ry=Math.floor(h*0.275);
+    const rw=Math.floor(w*0.45),rh=Math.floor(h*0.45);
 
-  let skinCount = 0;
-  let totalCount = 0;
+    let skin=0,total=0;
+    let borderSkin=0,centerSkin=0;
 
-  // 윤곽 느낌용: 경계 구간(위/아래/좌/우)
-  const borderMargin = 0.08; // 8% 정도를 경계로
-  let borderSkinCount = 0;
-  let centerSkinCount = 0;
+    const borderMargin=0.08;
+    const centerRange=0.3;
 
-  const centerMargin = 0.3; // 중앙 40% 정도를 "센터"라고 보고
+    for(let y=ry;y<ry+rh;y++){
+      for(let x=rx;x<rx+rw;x++){
+        const idx=(y*w+x)*4;
+        const r=data[idx],g=data[idx+1],b=data[idx+2];
+        total++;
+        if(!isSkin(r,g,b)) continue;
 
-  for(let y = roiY; y < roiY + roiH; y++){
-    for(let x = roiX; x < roiX + roiW; x++){
-      const idx = (y * w + x) * 4;
-      const r = data[idx], g = data[idx+1], b = data[idx+2];
-      totalCount++;
-      if(isSkin(r,g,b)){
-        skinCount++;
+        skin++;
 
-        // ROI 기준으로 0~1 정규화 좌표
-        const nx = (x - roiX) / roiW;
-        const ny = (y - roiY) / roiH;
+        const nx=(x-rx)/rw,ny=(y-ry)/rh;
 
-        const isBorder =
-          nx < borderMargin ||
-          nx > 1 - borderMargin ||
-          ny < borderMargin ||
-          ny > 1 - borderMargin;
+        const isBorder = nx<borderMargin||nx>1-borderMargin||ny<borderMargin||ny>1-borderMargin;
+        const isCenter = (
+          nx>0.5-centerRange && nx<0.5+centerRange &&
+          ny>0.5-centerRange && ny<0.5+centerRange
+        );
 
-        const isCenter =
-          nx > 0.5 - centerMargin &&
-          nx < 0.5 + centerMargin &&
-          ny > 0.5 - centerMargin &&
-          ny < 0.5 + centerMargin;
-
-        if(isBorder) borderSkinCount++;
-        if(isCenter) centerSkinCount++;
+        if(isBorder) borderSkin++;
+        if(isCenter) centerSkin++;
       }
     }
-  }
 
-  const skinRatio = skinCount / totalCount;
-  const borderRatio = borderSkinCount / Math.max(skinCount, 1);
-  const centerRatio = centerSkinCount / Math.max(skinCount, 1);
+    const skinRatio = skin / total;
+    const borderRatio = borderSkin / Math.max(skin,1);
+    const centerRatio = centerSkin / Math.max(skin,1);
 
-  let status = "bad";
-  let msg = "";
+    let status="bad",msg="";
 
-  // 1) 아예 손가락이 거의 안 보임 (너무 멀거나, 안 올림)
-  if(skinRatio < 0.05){
-    status = "bad";
-    msg = "손가락이 잘 보이지 않습니다. 네모 안에 더 가깝게 가져와 주세요.";
-  }
-  else {
-    // 2) 중앙 쪽에 손가락이 거의 없음 → 위치가 많이 어긋남
-    if(centerRatio < 0.2){
-      status = "warn";
-      msg = "손가락 위치가 중앙에서 많이 벗어났습니다. 네모 중앙으로 맞춰 주세요.";
+    if(skinRatio<0.04){
+      status="bad"; msg="손가락이 거의 보이지 않습니다.";
     }
-    // 3) 경계 쪽에 피부가 너무 많음 → 너무 가까워서 잘리는 느낌
+    else if(centerRatio < 0.2){
+      status="warn"; msg="손가락이 중앙에서 벗어났습니다.";
+    }
     else if(borderRatio > 0.55){
-      status = "warn";
-      msg = "손가락이 화면을 꽉 채워 가장자리가 잘리는 중입니다. 아주 살짝만 멀리 해 주세요.";
+      status="warn"; msg="너무 가까워 화면 가장자리가 잘립니다.";
     }
-    else {
-      // ✔ 여기서는 '가까운 것' 자체는 OK, 잘리지만 않으면 좋음
-      status = "good";
-      msg = "지문을 찍기 좋은 거리·위치입니다. 이 상태에서 기준 등록/인증을 해보세요.";
+    else{
+      status="good"; msg="좋은 위치입니다. 기준 등록이 가능합니다.";
     }
+
+    lastQuality=status;
+
+    fingerGuide.className = "finger-guide state-"+status;
+
+    statusBadge.className =
+      "status-badge " + (status==="good"?"good":status==="warn"?"warn":"bad");
+    statusBadge.textContent =
+      status==="good"?"품질 양호":status==="warn"?"조정 필요":"인식 약함";
+
+    if(status==="good") showOk(msg);
+    else showErr(msg);
+
+    setButtons(true);
   }
-
-  // 상태 저장 및 UI 반영
-  lastQuality = status;
-
-  fingerGuide.className = "finger-guide state-" + status;
-  statusBadge.className =
-    "status-badge " + (status === "good" ? "good" : status === "warn" ? "warn" : "bad");
-  statusBadge.textContent =
-    status === "good" ? "품질 양호" :
-    status === "warn" ? "조정 필요" : "인식 약함";
-
-  // 메시지
-  okMsg.classList.remove("show");
-  errMsg.classList.remove("show");
-  infoMsg.classList.remove("show");
-
-  if(status === "good"){
-    showOk(msg);
-  } else if(status === "warn"){
-    showErr(msg);
-  } else {
-    showErr(msg);
-  }
-
-  // 버튼 상태도 갱신
-  setButtons(true);
 
   requestAnimationFrame(analyze);
 }
 
+
+// 기준 템플릿 추출
 function captureTemplate(){
   const w=analyzeCanvas.width,h=analyzeCanvas.height;
   analyzeCtx.drawImage(video,0,0,w,h);
-  const d=analyzeCtx.getImageData(0,0,w,h).data;
+  const data=analyzeCtx.getImageData(0,0,w,h).data;
 
   const rx=Math.floor(w*0.275),ry=Math.floor(h*0.275);
   const rw=Math.floor(w*0.45),rh=Math.floor(h*0.45);
@@ -332,53 +288,63 @@ function captureTemplate(){
   const tpl=new Float32Array(TEMPLATE*TEMPLATE);
 
   const stepX=rw/TEMPLATE,stepY=rh/TEMPLATE;
-  let k=0;
+  let i=0;
 
   for(let j=0;j<TEMPLATE;j++){
-    for(let i=0;i<TEMPLATE;i++){
-      const x=Math.floor(rx+i*stepX);
+    for(let k=0;k<TEMPLATE;k++){
+      const x=Math.floor(rx+k*stepX);
       const y=Math.floor(ry+j*stepY);
       const idx=(y*w+x)*4;
-      const r=d[idx],g=d[idx+1],b=d[idx+2];
+      const r=data[idx],g=data[idx+1],b=data[idx+2];
       const gray=0.299*r+0.587*g+0.114*b;
-      tpl[k++]=gray;
+      tpl[i++] = gray;
     }
   }
-
   return tpl;
 }
 
+
+// 기준 등록
 function enrollFinger(){
-  if(lastQuality!=="good"){return showErr("품질이 좋을 때만 등록할 수 있습니다.");}
-  enrolledTemplate=captureTemplate();
-  showOk("기준 등록 완료. 이제 같은 손가락으로 인증해보세요.");
+  enrolledTemplate = captureTemplate();
+
+  if(lastQuality !== "good"){
+    showErr("품질은 조금 아쉽지만, 기준을 등록했습니다.");
+  } else {
+    showOk("기준 등록 완료! 이제 인증하기를 눌러보세요.");
+  }
+
+  setButtons(true);
 }
 
-function verifyFinger(){
-  if(!enrolledTemplate){return showErr("먼저 기준을 등록하세요.");}
-  if(lastQuality!=="good"){return showErr("품질이 좋을 때만 인증할 수 있습니다.");}
 
-  const current=captureTemplate();
+// 인증하기
+function verifyFinger(){
+  if(!enrolledTemplate){
+    return showErr("먼저 기준 등록을 해주세요.");
+  }
+
+  const current = captureTemplate();
   let diff=0;
+
   for(let i=0;i<current.length;i++){
     diff+=Math.abs(current[i]-enrolledTemplate[i]);
   }
   diff/=current.length;
 
-  if(diff<MATCH_THRESHOLD){
-    showOk("인증 성공! 동일한 손가락으로 확인되었습니다.");
-    authOverlay.classList.add("show");
+  if(diff < MATCH_THRESHOLD){
+    showOk("인증 성공!");
+    authResult.classList.add("show");
   } else {
-    showErr("인증 실패. 다른 손가락입니다. (차이: "+diff.toFixed(1)+")");
-    authOverlay.classList.remove("show");
+    showErr("인증 실패 (차이: "+diff.toFixed(1)+")");
+    authResult.classList.remove("show");
   }
 }
 
 window.addEventListener("unload",()=>{
-  if(stream)stream.getTracks().forEach(t=>t.stop());
+  if(stream) stream.getTracks().forEach(t=>t.stop());
 });
 </script>
+
 </body>
 </html>
-
-
