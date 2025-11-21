@@ -3,39 +3,42 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AILee v6 ZOOM PRO – 4배 줌 지문 인증 (산업용 최종판)</title>
+  <title>AILee v8 TouchPressure – 화면 압력 지문 인증 (테스트용)</title>
   
-  <!-- 라이선스: 완전 합법, 동의 없이 상업용 가능 -->
   <style>
-    body{font-family: -apple-system,system-ui,sans-serif;background:#121212;color:#eee;padding:10px;}
-    .container{max-width:540px;margin:20px auto;background:#1e1e1e;border,0,0,0.3);border-radius:24px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,0.6);}
-    h1{font-size:24px;text-align:center;margin-bottom:10px;}
-    p{font-size:14px;text-align:center;color:#aaa;margin-bottom:20px;}
-    .video-box{position:relative;display:inline-block;border-radius:20px;overflow:hidden;border:5px solid #333;box-shadow:0 10px 40px rgba(0,0,0,0.5);}
-    video{width:100%;display:block;}
-    #zoomCanvas{position:absolute;top:0;left:0;width:100%;height:100%;border-radius:16px;}
-    .guide{
+    body{
+      margin:0;background:#121212;color:#fff;font-family:sans-serif;
+      height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;
+      touch-action: none;
+    }
+    .title{font-size:28px;margin-bottom:20px;font-weight:bold;}
+    .touch-area{
+      width:320px;height:420px;background:#1e1e1e;border:6px dashed #333;
+      border-radius:30px;position:relative;overflow:hidden;
+      box-shadow:0 20px 60px rgba(0,0,0,0.7);
+    }
+    .fingerprint{
       position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:240px;height:340px;border:5px dashed #00ff88;border-radius:24px;
-      pointer-events:none;z-index:10;box-shadow:0 0 0 9999px rgba(0,0,0,0.7);
+      width:180px;height:280px;background:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/200200/svg" viewBox="0 0 180 280"><path fill="%23333" d="M90 20 C60 20, 40 50, 40 90 C40 140, 70 200, 90 280 C110 200, 140 140, 140 90 C140 50, 120 20, 90 20 Z"/></svg>') center/contain no-repeat;
+      opacity:0.4;transition:opacity 0.3s;
     }
-    .zoom-info{
-      position:absolute;bottom:16px;left:16px;padding:8px 16px;background:rgba(0,255,136,0.9);
-      color:black;font-weight:bold;border-radius:12px;font-size:18px;
+    .pressure-bar{
+      position:absolute;bottom:0;left:0;width:100%;height:0;background:linear-gradient(to top, #00c853, #43a047);
+      transition:height 0.1s;transform-origin:bottom;
     }
-    .status{margin:20px 0;font-size:20px;text-align:center;font-weight:bold;}
+    .info{margin:30px 0;font-size:24px;font-weight:bold;text-align:center;}
     button{
-      padding:18px 32px;margin:10px;font-size:19px;border:none;border-radius:16px;
-      color:white;font-weight:bold;cursor:pointer;width:100%;transition:0.3s;
+      padding:18px 40px;margin:10px;font-size:20px;border:none;border-radius:16px;
+      color:white;font-weight:bold;cursor:pointer;min-width:200px;
     }
     .start{background:#0066ff;}
     .enroll{background:#00c853;}
     .verify{background:#ff6d00;}
     .clear{background:#d50000;}
-    .disabled{background:#444;cursor:not-allowed;opacity:0.5;}
+    .disabled{opacity:0.5;cursor:not-allowed;}
     .result{
       position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-      padding:40px 80px;border-radius:30px;font-size:36px;color:white;z-index:999;
+      padding:40px 80px;border-radius:30px;font-size:40px;color:white;z-index:999;
       display:none;animation:pop 0.7s;box-shadow:0 30px 80px rgba(0,0,0,0.8);
     }
     .success{background:#00c853;}
@@ -44,184 +47,112 @@
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>AILee v6 ZOOM PRO</h1>
-    <p>손가락을 10~20cm 떨어뜨리고 → 자동 4배 줌 → 진짜 지문 인증</p>
-    
-    <div class="video-box">
-      <video id="video" autoplay playsinline muted></video>
-      <canvas id="zoomCanvas"></canvas>
-      <div class="guide"></div>
-      <div class="zoom-info">4X ZOOM</div>
-    </div>
-    
-    <div class="status" id="status">시작 버튼을 눌러주세요</div>
-    
-    <button id="start" class="start">카메라 시작</button>
-    <button id="enroll" class="enroll disabled" disabled>지문 등록</button>
-    <button id="verify" class="verify disabled" disabled>지문 인증</button>
-    <button id="clear" class="clear">등록 삭제</button>
+  <div class="title">AILee v8 TouchPressure</div>
+  <p style="margin-bottom:30px;color:#aaa;">손가락을 꾹 누르면 압력으로 지문 등록·인증</p>
+
+  <div class="touch-area" id="touchArea">
+    <div class="fingerprint" id="fpVisual"></div>
+    <div class="pressure-bar" id="bar"></div>
   </div>
+
+  <div class="info" id="info">손가락을 길게 눌러주세요</div>
+
+  <button id="enroll" class="enroll disabled" disabled>지문 등록</button>
+  <button id="verify" class="verify disabled" disabled>지문 인증</button>
+  <button id="clear" class="clear">등록 삭제</button>
 
   <div id="result" class="result success">지문 인증 성공!</div>
   <div id="resultFail" class="result fail">인증 실패</div>
 
-  <script src="https://docs.opencv.org/4.x/opencv.js" async onload="cvReady()"></script>
   <script>
-    let stream, enrolled = null;
-    const video = document.getElementById('video');
-    const zoomCanvas = document.getElementById('zoomCanvas');
-    const zctx = zoomCanvas.getContext('2d');
+    const area = document.getElementById('touchArea');
+    const bar = document.getElementById('bar');
+    const fpVisual = document.getElementById('fpVisual');
+    const info = document.getElementById('info');
 
-    function cvReady() {
-      document.getElementById('status').textContent = "준비 완료! 시작하세요";
-    }
+    let pressStart = 0;
+    let maxPressure = 0;
+    let maxRadius = 0;
+    let touchX = 0, touchY = 0;
+    let isPressing = false;
 
-    document.getElementById('start').onclick = async () => {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {facingMode: "environment", width: {ideal: 1920}, height: {ideal: 1080}}
-      });
-      video.srcObject = stream;
-      video.onloadedmetadata = () => {
-        zoomCanvas.width = video.videoWidth;
-        zoomCanvas.height = video.videoHeight;
-        document.getElementById('status').textContent = "손가락을 초록 테두리에 맞추면 자동 4배 줌!";
-        loop();
-      };
+    // 등록된 "압력 지문" (시간, 압력 곡선, 면적 변화)
+    let enrolledProfile = null;
+
+    area.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      pressStart = Date.now();
+      maxPressure = t.force || 0.5;
+      maxRadius = Math.max(t.radiusX || 10, t.radiusY || 10);
+      touchX = t.clientX; touchY = t.clientY;
+      isPressing = true;
+      info.textContent = "꾹 누르는 중...";
+      fpVisual.style.opacity = '0.8';
+    });
+
+    area.addEventListener('touchmove', e => {
+      if (!isPressing) return;
+      const t = e.touches[0];
+      const force = t.force || 0.5;
+      const radius = Math.max(t.radiusX || 10, t.radiusY || 10);
+      
+      if (force > maxPressure) maxPressure = force;
+      if (radius > maxRadius) maxRadius = radius;
+
+      // 압력 시각화
+      const height = Math.min(force * 400, 420);
+      bar.style.height = height + 'px';
+    });
+
+    area.addEventListener('touchend', e => {
+      if (!isPressing) return;
+      isPressing = false;
+
+      const duration = Date.now() - pressStart;
+      const avgPressure = maxPressure;
+      const radiusGrowth = maxRadius > 20;  // 진짜 손가락은 면적 커짐
+
+      bar.style.height = '0px';
+      fpVisual.style.opacity = '0.4';
+
+      // 살아있는 손가락 판단 (Liveness)
+      const isLiveFinger = duration > 1000 && avgPressure > 0.6 && radiusGrowth;
+
+      if (isLiveFinger) {
+        info.textContent = `살아있는 손가락 감지! 압력: ${(avgPressure*100).toFixed(0)}%`;
+        document.getElementById('enroll').disabled = false;
+        document.getElementById('enroll').classList.remove('disabled');
+        document.getElementById('verify').disabled = false;
+        document.getElementById('verify').classList.remove('disabled');
+
+        // 현재 압력 프로필 저장 (임시)
+        window.currentProfile = {duration, avgPressure, maxRadius, radiusGrowth};
+      } else {
+        info.textContent = "너무 짧거나 약하게 눌렀어요. 다시 꾹 눌러주세요";
+      }
+    });
+
+    // 지문 등록 (압력 패턴 저장)
+    document.getElementById('enroll').onclick = () => {
+      if (!window.currentProfile) return;
+      localStorage.setItem('pressureFP', JSON.stringify(window.currentProfile));
+      enrolledProfile = window.currentProfile;
+      alert(`지문 등록 완료!\n누른 시간: ${window.currentProfile.duration}ms\n평균 압력: ${(window.currentProfile.avgPressure*100).toFixed(1)}%`);
     };
 
-    function loop() {
-      if (!stream) return;
-      zctx.drawImage(video, 0, 0);
-      const src = cv.imread(zoomCanvas);
-
-      // 1. 손가락 자동 탐지
-      const finger = detectFinger(src);
-      if (finger) {
-        // 2. 4배 줌 + 중앙 정렬
-        const zoomed = zoom4x(src, finger);
-        cv.imshow(zoomCanvas, zoomed);
-
-        // 3. 지문 전처리 + minutiae 추출
-        const points = extractClearFingerprint(zoomed);
-        
-        document.getElementById('status').textContent = 
-          `4X ZOOM 활성화 · 특징점 ${points.length}개 검출 (지문 선명도 최고!)`;
-
-        if (points.length > 30) {
-          document.getElementById('enroll').disabled = false;
-          document.getElementById('enroll').classList.remove('disabled');
-          document.getElementById('verify').disabled = false;
-          document.getElementById('verify').classList.remove('disabled');
-          window.latestPoints = points;
-        }
-        zoomed.delete();
-      } else {
-        document.getElementById('status').textContent = "손가락을 초록 박스에 맞춰주세요 (10~20cm 거리)";
-      }
-      src.delete();
-      requestAnimationFrame(loop);
-      }
-
-    // 4배 줌 핵심 함수
-    function zoom4x(src, rect) {
-      const roi = new cv.Rect(
-        Math.max(0, rect.x - rect.width * 0.3),
-        Math.max(0, rect.y - rect.height * 0.4),
-        Math.min(src.cols, rect.width * 1.6),
-        Math.min(src.rows, rect.height * 1.8)
-      );
-      const cropped = src.roi(roi);
-      const zoomed = new cv.Mat();
-      cv.resize(cropped, zoomed, new cv.Size(src.cols, src.rows), 0, 0, cv.INTER_CUBIC);
-      cropped.delete();
-      return zoomed;
-    }
-
-    function detectFinger(src) {
-      const gray = new cv.Mat();
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      const thresh = new cv.Mat();
-      cv.threshold(gray, thresh, 0, 255, cv.THRESH_OTSU);
-      
-      const contours = new cv.MatVector();
-      cv.findContours(thresh, contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-      
-      let best = null;
-      for (let i = 0; i < contours.size(); i++) {
-        const area = cv.contourArea(contours.get(i));
-        if (area > 5000 && area < 40000) {
-          best = cv.boundingRect(contours.get(i));
-          break;
-        }
-      }
-      gray.delete(); thresh.delete(); contours.delete();
-      return best;
-    }
-
-    function extractClearFingerprint(mat) {
-      const gray = new cv.Mat();
-      cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
-      
-      // 4배 줌된 이미지 전용 강력 전처리
-      const clahe = cv.createCLAHE(4.0, new cv.Size(8,8));
-      const enhanced = new cv.Mat();
-      clahe.apply(gray, enhanced);
-      
-      const bin = new cv.Mat();
-      cv.threshold(enhanced, bin, 0, 255, cv.THRESH_OTSU);
-      const skeleton = new cv.Mat();
-      cv.ximgproc.thinning(bin, skeleton);
-      
-      const points = [];
-      const data = skeleton.data;
-      const w = skeleton.cols, h = skeleton.rows;
-      
-      for (let y = 10; y < h-10; y++) {
-        for (let x = 10; x < w-10; x++) {
-          const i = y * w + x;
-          if (data[i] === 255) {
-            let cnt = 0;
-            for (let dy = -1; dy <= 1; dy++)
-              for (let dx = -1; dx <= 1; dx++)
-                if (dx || dy) if (data[(y+dy)*w + (x+dx)] === 255) cnt++;
-            if (cnt === 1 || cnt === 3) points.push({x, y, type: cnt===1 ? "end" : "bif"});
-          }
-        }
-      }
-      
-      gray.delete(); enhanced.delete(); bin.delete(); skeleton.delete(); clahe.delete();
-      return points;
-    }
-
-    // 등록
-    document.getElementById('enroll').onclick = () => {
-      if (!window.latestPoints || window.latestPoints.length < 35) {
-        alert("지문이 선명하지 않습니다. 조금 더 가까이 대주세요");
+    // 지문 인증 (압력 패턴 비교)
+    document.getElementById('verify').onclick = () => {
+      if (!window.currentProfile || !localStorage.getItem('pressureFP')) {
+        alert("등록된 지문이 없습니다");
         return;
       }
-      localStorage.setItem('fp6', JSON.stringify(window.latestPoints));
-      alert(`지문 등록 완료! (4배 줌 · ${window.latestPoints.length}개 특징점)`);
-    };
 
-    // 인증
-    document.getElementById('verify').onclick = () => {
-      if (!window.latestPoints) return;
-      const saved = JSON.parse(localStorage.getItem('fp6') || '[]');
-      if (saved.length === 0) { alert("등록된 지문 없음"); return; }
-      
-      let matches = 0;
-      for (const p1 of window.latestPoints) {
-        for (const p2 of saved) {
-          if (Math.hypot(p1.x-p2.x, p1.y-p2.y) < 35) {  // 4배 줌 보정
-            matches++;
-            break;
-          }
-        }
-      }
-      const score = matches / Math.max(window.latestPoints.length, saved.length);
-      
-      if (score > 0.62) {
+      const saved = JSON.parse(localStorage.getItem('pressureFP'));
+      const similarity = calculateSimilarity(window.currentProfile, saved);
+
+      if (similarity > 0.78) {
         document.getElementById('result').style.display = 'block';
         setTimeout(() => document.getElementById('result').style.display = 'none', 3000);
       } else {
@@ -230,9 +161,18 @@
       }
     };
 
+    function calculateSimilarity(a, b) {
+      let score = 0;
+      if (Math.abs(a.duration - b.duration) < 800) score += 0.4;
+      if (Math.abs(a.avgPressure - b.avgPressure) < 0.3) score += 0.4;
+      if (a.radiusGrowth === b.radiusGrowth) score += 0.2;
+      return score;
+    }
+
     document.getElementById('clear').onclick = () => {
-      localStorage.removeItem('fp6');
-      alert("등록 삭제됨");
+      localStorage.removeItem('pressureFP');
+      enrolledProfile = null;
+      alert("등록된 압력 지문이 삭제되었습니다");
     };
   </script>
 </body>
