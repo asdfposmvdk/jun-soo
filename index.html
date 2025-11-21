@@ -3,176 +3,150 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AILee v8 TouchPressure – 화면 압력 지문 인증 (테스트용)</title>
+  <title>AILee v9 Native Fingerprint – 핸드폰 지문인식 테스트</title>
   
   <style>
     body{
-      margin:0;background:#121212;color:#fff;font-family:sans-serif;
+      margin:0;background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color:white;font-family:-apple-system,system-ui,sans-serif;
       height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;
-      touch-action: none;
+      text-align:center;
     }
-    .title{font-size:28px;margin-bottom:20px;font-weight:bold;}
-    .touch-area{
-      width:320px;height:420px;background:#1e1e1e;border:6px dashed #333;
-      border-radius:30px;position:relative;overflow:hidden;
-      box-shadow:0 20px 60px rgba(0,0,0,0.7);
+    .card{
+      background:rgba(255,255,255,0.15);backdrop-filter:blur(20px);
+      border-radius:30px;padding:40px 30px;max-width:400px;width:90%;
+      box-shadow:0 20px 60px rgba(0,0,0,0.4);
     }
-    .fingerprint{
-      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:180px;height:280px;background:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/200200/svg" viewBox="0 0 180 280"><path fill="%23333" d="M90 20 C60 20, 40 50, 40 90 C40 140, 70 200, 90 280 C110 200, 140 140, 140 90 C140 50, 120 20, 90 20 Z"/></svg>') center/contain no-repeat;
-      opacity:0.4;transition:opacity 0.3s;
-    }
-    .pressure-bar{
-      position:absolute;bottom:0;left:0;width:100%;height:0;background:linear-gradient(to top, #00c853, #43a047);
-      transition:height 0.1s;transform-origin:bottom;
-    }
-    .info{margin:30px 0;font-size:24px;font-weight:bold;text-align:center;}
+    h1{font-size:28px;margin-bottom:16px;}
+    p{font-size:16px;margin-bottom:30px;opacity:0.9;}
     button{
-      padding:18px 40px;margin:10px;font-size:20px;border:none;border-radius:16px;
-      color:white;font-weight:bold;cursor:pointer;min-width:200px;
+      width:100%;padding:18px;font-size:20px;font-weight:bold;
+      border:none;border-radius:18px;margin:12px 0;color:white;
+      cursor:pointer;transition:0.3s;backdrop-filter:blur(10px);
     }
-    .start{background:#0066ff;}
-    .enroll{background:#00c853;}
-    .verify{background:#ff6d00;}
-    .clear{background:#d50000;}
+    .register{background:#ff4757;}
+    .auth{background:#2ed573;}
+    .clear{background:#747d8c;}
     .disabled{opacity:0.5;cursor:not-allowed;}
-    .result{
-      position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-      padding:40px 80px;border-radius:30px;font-size:40px;color:white;z-index:999;
-      display:none;animation:pop 0.7s;box-shadow:0 30px 80px rgba(0,0,0,0.8);
+    .status{
+      margin:30px 0;font-size:24px;font-weight:bold;
+      min-height:60px;display:flex;align-items:center;justify-content:center;
     }
-    .success{background:#00c853;}
-    .fail{background:#d50000;}
-    @keyframes pop{from{transform:translate(-50%,-50%) scale(0.2);opacity:0;}to{transform:translate(-50%,-50%) scale(1);opacity:1;}}
+    .icon{font-size:60px;margin-bottom:20px;}
+    .success{color:#2ed573;}
+    .fail{color:#ff4757;}
   </style>
 </head>
 <body>
-  <div class="title">AILee v8 TouchPressure</div>
-  <p style="margin-bottom:30px;color:#aaa;">손가락을 꾹 누르면 압력으로 지문 등록·인증</p>
-
-  <div class="touch-area" id="touchArea">
-    <div class="fingerprint" id="fpVisual"></div>
-    <div class="pressure-bar" id="bar"></div>
+  <div class="card">
+    <div class="icon">Finger Print</div>
+    <h1>핸드폰 지문인식 테스트</h1>
+    <p>핸드폰 자체 지문 센서(Touch ID / 안드로이드 지문)를 사용합니다</p>
+    
+    <div class="status" id="status">버튼을 눌러 테스트 시작</div>
+    
+    <button id="register" class="register">지문 등록하기</button>
+    <button id="auth" class="auth">지문 인증하기</button>
+    <button id="clear" class="clear">등록된 지문 삭제</button>
   </div>
 
-  <div class="info" id="info">손가락을 길게 눌러주세요</div>
-
-  <button id="enroll" class="enroll disabled" disabled>지문 등록</button>
-  <button id="verify" class="verify disabled" disabled>지문 인증</button>
-  <button id="clear" class="clear">등록 삭제</button>
-
-  <div id="result" class="result success">지문 인증 성공!</div>
-  <div id="resultFail" class="result fail">인증 실패</div>
-
   <script>
-    const area = document.getElementById('touchArea');
-    const bar = document.getElementById('bar');
-    const fpVisual = document.getElementById('fpVisual');
-    const info = document.getElementById('info');
+    // Web Authentication API (WebAuthn) - 2025년 모든 핸드폰 100% 지원
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
 
-    let pressStart = 0;
-    let maxPressure = 0;
-    let maxRadius = 0;
-    let touchX = 0, touchY = 0;
-    let isPressing = false;
+    // 등록된 지문이 있는지 확인
+    if (localStorage.getItem('credentialId')) {
+      document.getElementById('status').textContent = "이미 등록된 지문이 있습니다";
+      document.getElementById('auth').classList.remove('disabled');
+    }
 
-    // 등록된 "압력 지문" (시간, 압력 곡선, 면적 변화)
-    let enrolledProfile = null;
-
-    area.addEventListener('touchstart', e => {
-      e.preventDefault();
-      if (e.touches.length !== 1) return;
-      const t = e.touches[0];
-      pressStart = Date.now();
-      maxPressure = t.force || 0.5;
-      maxRadius = Math.max(t.radiusX || 10, t.radiusY || 10);
-      touchX = t.clientX; touchY = t.clientY;
-      isPressing = true;
-      info.textContent = "꾹 누르는 중...";
-      fpVisual.style.opacity = '0.8';
-    });
-
-    area.addEventListener('touchmove', e => {
-      if (!isPressing) return;
-      const t = e.touches[0];
-      const force = t.force || 0.5;
-      const radius = Math.max(t.radiusX || 10, t.radiusY || 10);
-      
-      if (force > maxPressure) maxPressure = force;
-      if (radius > maxRadius) maxRadius = radius;
-
-      // 압력 시각화
-      const height = Math.min(force * 400, 420);
-      bar.style.height = height + 'px';
-    });
-
-    area.addEventListener('touchend', e => {
-      if (!isPressing) return;
-      isPressing = false;
-
-      const duration = Date.now() - pressStart;
-      const avgPressure = maxPressure;
-      const radiusGrowth = maxRadius > 20;  // 진짜 손가락은 면적 커짐
-
-      bar.style.height = '0px';
-      fpVisual.style.opacity = '0.4';
-
-      // 살아있는 손가락 판단 (Liveness)
-      const isLiveFinger = duration > 1000 && avgPressure > 0.6 && radiusGrowth;
-
-      if (isLiveFinger) {
-        info.textContent = `살아있는 손가락 감지! 압력: ${(avgPressure*100).toFixed(0)}%`;
-        document.getElementById('enroll').disabled = false;
-        document.getElementById('enroll').classList.remove('disabled');
-        document.getElementById('verify').disabled = false;
-        document.getElementById('verify').classList.remove('disabled');
-
-        // 현재 압력 프로필 저장 (임시)
-        window.currentProfile = {duration, avgPressure, maxRadius, radiusGrowth};
-      } else {
-        info.textContent = "너무 짧거나 약하게 눌렀어요. 다시 꾹 눌러주세요";
-      }
-    });
-
-    // 지문 등록 (압력 패턴 저장)
-    document.getElementById('enroll').onclick = () => {
-      if (!window.currentProfile) return;
-      localStorage.setItem('pressureFP', JSON.stringify(window.currentProfile));
-      enrolledProfile = window.currentProfile;
-      alert(`지문 등록 완료!\n누른 시간: ${window.currentProfile.duration}ms\n평균 압력: ${(window.currentProfile.avgPressure*100).toFixed(1)}%`);
-    };
-
-    // 지문 인증 (압력 패턴 비교)
-    document.getElementById('verify').onclick = () => {
-      if (!window.currentProfile || !localStorage.getItem('pressureFP')) {
-        alert("등록된 지문이 없습니다");
+    // 1. 지문 등록 (처음 한 번만)
+    document.getElementById('register').onclick = async () => {
+      if (!window.PublicKeyCredential) {
+        alert("이 브라우저는 지문인식을 지원하지 않습니다");
         return;
       }
 
-      const saved = JSON.parse(localStorage.getItem('pressureFP'));
-      const similarity = calculateSimilarity(window.currentProfile, saved);
+      try {
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            rp: { name: "AILee Test" },
+            user: {
+              id: encoder.encode("user@" + Date.now()),
+              name: "testuser",
+              displayName: "테스트 유저"
+            },
+            pubKeyCredParams: [{alg: -7, type: "public-key"}],
+            authenticatorSelection: {
+              authenticatorAttachment: "platform",  // 핸드폰 자체 지문 센서 강제
+              userVerification: "required",
+              requireResidentKey: true
+            },
+            },
+            timeout: 60000,
+          }
+        });
 
-      if (similarity > 0.78) {
-        document.getElementById('result').style.display = 'block';
-        setTimeout(() => document.getElementById('result').style.display = 'none', 3000);
-      } else {
-        document.getElementById('resultFail').style.display = 'block';
-        setTimeout(() => document.getElementById('resultFail').style.display = 'none', 3000);
+        const credentialId = credential.rawId;
+        localStorage.setItem('credentialId', Array.from(new Uint8Array(credentialId)).join(','));
+        localStorage.setItem('credential', JSON.stringify(credential));
+
+        document.getElementById('status').textContent = "지문 등록 성공!";
+        document.getElementById('auth').classList.remove('disabled');
+        setTimeout(() => document.getElementById('status').textContent = "이제 인증 버튼을 눌러보세요", 2000);
+      } catch (err) {
+        document.getElementById('status').textContent = "등록 실패: " + err.message;
       }
     };
 
-    function calculateSimilarity(a, b) {
-      let score = 0;
-      if (Math.abs(a.duration - b.duration) < 800) score += 0.4;
-      if (Math.abs(a.avgPressure - b.avgPressure) < 0.3) score += 0.4;
-      if (a.radiusGrowth === b.radiusGrowth) score += 0.2;
-      return score;
-    }
+    // 2. 지문 인증
+    document.getElementById('auth').onclick = async () => {
+      if (!localStorage.getItem('credentialId')) {
+        alert("먼저 지문을 등록해주세요");
+        return;
+      }
 
+      try {
+        const credentialIdArray = localStorage.getItem('credentialId').split(',').map(Number);
+        const allowCredentials = [{
+          type: 'public-key',
+          id: new Uint8Array(credentialIdArray),
+          transports: ['internal']
+        }];
+
+        const assertion = await navigator.credentials.get({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            allowCredentials,
+            userVerification: "required",
+            timeout: 60000,
+          }
+        });
+
+        document.getElementById('status').innerHTML = "지문 인증 성공!";
+        document.getElementById('status').classList.add('success');
+        setTimeout(() => {
+          document.getElementById('status').textContent = "다시 인증하려면 버튼을 누르세요";
+          document.getElementById('status').classList.remove('success');
+        }, 3000);
+
+      } catch (err) {
+        document.getElementById('status').innerHTML = "인증 실패<br>" + err.message;
+        document.getElementById('status').classList.add('fail');
+        setTimeout(() => {
+          document.getElementById('status').textContent = "다시 시도해보세요";
+          document.getElementById('status').classList.remove('fail');
+        }, 3000);
+      }
+    };
+
+    // 등록 삭제
     document.getElementById('clear').onclick = () => {
-      localStorage.removeItem('pressureFP');
-      enrolledProfile = null;
-      alert("등록된 압력 지문이 삭제되었습니다");
+      localStorage.clear();
+      document.getElementById('status').textContent = "등록된 지문이 모두 삭제되었습니다";
+      document.getElementById('auth').classList.add('disabled');
     };
   </script>
 </body>
