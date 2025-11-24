@@ -3,82 +3,113 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>20cm 배경 완전 블러 지문 인증</title>
+  <title>손가락만 자동 인식 → 블러 해제</title>
   <script src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection@2.0.0"></script>
   <style>
     body{margin:0;background:#000;color:#fff;font-family:sans-serif;text-align:center;padding:20px;}
     #box{position:relative;display:inline-block;}
-    video,canvas,img{width:100%;max-width:500px;border-radius:24px;margin-top:20px;}
-    #guide{
-      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:260px;height:380px;border:6px solid #0f0;border-radius:40px;
-      pointer-events:none;box-shadow:0 0 40px #0f0;}
-    button{
-      margin-top:30px;padding:20px 50px;font-size:24px;background:#0f0;color:#000;
-      border:none;border-radius:20px;font-weight:bold;cursor:pointer;}
-    .result{text-align:center;font-size:28px;margin:30px;color:#0f0;}
+    video,canvas,img{width:100%;max-width:500px;border-radius:24px;margin:20px auto;display:block;}
+    button{margin:30px auto;padding:20px 60px;font-size:24px;background:#0f0;color:#000;
+           border:none;border-radius:20px;font-weight:bold;cursor:pointer;display:block;}
+    .info{font-size:28px;margin:20px;color:#0f0;}
   </style>
 </head>
 <body>
-  <h2>손가락을 초록 테두리에 맞추고<br>촬영 버튼을 누르세요</h2>
+  <h2>손가락을 보여주세요<br>자동으로 손가락만 선명하게!</h2>
   
   <div id="box">
     <video id="v" autoplay playsinline muted></video>
-    <div id="guide"></div>
   </div>
 
-  <br>
-  <button onclick="shoot()">촬영하기</button>
-
+  <button onclick="shoot()">촬영 → 손가락만 선명하게</button>
+  
+  <div class="info" id="status">AI 모델 로딩 중... (처음 10~20초)</div>
+  <img id="result" style="display:none;">
   <canvas id="c" style="display:none;"></canvas>
-  <img id="resultImg" alt="촬영 결과" style="display:none;">
-  <div class="result" id="result">촬영 후 결과가 여기 나타납니다</div>
 
   <script>
     const video = document.getElementById('v');
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d');
-    const resultImg = document.getElementById('resultImg');
-    const result = document.getElementById('result');
+    const resultImg = document.getElementById('result');
+    const status = document.getElementById('status');
+    let detector;
+
+    // TensorFlow Hand Pose 모델 로드 (손가락 정밀 탐지)
+    async function loadModel() {
+      status.textContent = "손가락 인식 AI 로딩 중...";
+      const model = handPoseDetection.SupportedModels.MediaPipeHands;
+      detector = await handPoseDetection.createDetector(model, {
+        runtime: 'tfjs',
+        modelType: 'full',
+        maxHands: 2
+      });
+      status.textContent = "준비 완료! 손가락을 보여주세요";
+    }
 
     // 카메라 시작
     async function start() {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {facingMode: "environment", width: {ideal: 1920}, height: {ideal: 1080}}
+        video: {facingId: "environment", width: {ideal: 1920}, height: {ideal: 1080}}
       });
       video.srcObject = stream;
+      await loadModel();
     }
 
-    // 촬영 → 배경 완전 블러 + 손가락만 선명 + 결과 보여주기
-    function shoot() {
+    // 촬영 → 손가락 자동 인식 → 그 부분만 블러 해제
+    async function shoot() {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0);
 
       const src = cv.imread(canvas);
 
-      // 손가락 영역 (초록 테두리)
-      const roi = new cv.Rect(
-        src.cols * 0.32, src.rows * 0.20,
-        src.cols * 0.36, src.rows * 0.60
-      );
-
-      // 배경 완전 블러 (20cm 이상처럼)
+      // 1. 전체 배경 강하게 블러 (20~50cm 이상처럼)
       const blurred = new cv.Mat();
-      cv.GaussianBlur(src, blurred, new cv.Size(121, 121), 70);
+      cv.GaussianBlur(src, blurred, new cv.Size(151,151), 90);
 
-      // 손가락 부분만 원본으로 복사 → 자동 초점 효과
-      const finger = src.roi(roi);
-      blurred.roi(roi).copyTo(finger);
+      // 2. TensorFlow로 손가락 위치 자동 탐지
+      const hands = await detector.estimateHands(video);
+      if (hands.length === 0) {
+        status.textContent = "손가락을 찾지 못했습니다";
+        cv.imshow(canvas, blurred);
+        resultImg.src = canvas.toDataURL();
+        resultImg.style.display = 'block';
+        return;
+      }
 
-      // 결과 표시: 캔버스 → 이미지 src로 변환
+      // 3. 탐지된 손가락 영역만 원본으로 복사 (블러 해제)
+      hands.forEach(hand => {
+        const keypoints = hand.keypoints;
+        let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+        keypoints.forEach(p => {
+          minX = Math.min(minX, p.x);
+          minY = Math.min(minY, p.y);
+          maxX = Math.max(maxX, p.x);
+          maxY = Math.max(maxY, p.y);
+        });
+
+        // 여유 있게 확장 (손가락 전체 포함)
+        const padding = 80;
+        const x = Math.max(0, minX - padding);
+        const y = Math.max(0, minY - padding);
+        const w = Math.min(src.cols - x, maxX - minX + padding*2);
+        const h = Math.min(src.rows - y, maxY - minY + padding*2);
+
+        const roi = new cv.Rect(x, y, w, h);
+        const fingerArea = src.roi(roi);
+        blurred.roi(roi).copyTo(fingerArea);
+      });
+
+      // 결과 표시
       cv.imshow(canvas, blurred);
       resultImg.src = canvas.toDataURL('image/png');
       resultImg.style.display = 'block';
-
-      result.textContent = '촬영 결과: 배경 블러 처리 완료! 손가락만 선명하게 보입니다.';
-
-      src.delete(); blurred.delete(); finger.delete();
+      status.textContent = `손가락 ${hands.length}개 자동 인식 완료!`;
+      
+      src.delete(); blurred.delete();
     }
 
     cv.onRuntimeInitialized = start;
