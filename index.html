@@ -3,25 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>초점 완벽 지문 인증</title>
+  <title>지문 인증 - 상태 완벽 구분</title>
   <script src="https://docs.opencv.org/4.x/opencv.js"></script>
   <style>
     body{margin:0;background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:20px;}
     video{width:100%;max-width:480px;border-radius:20px;}
-    #overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:220px;height:340px;
-             border:5px solid #0f0;border-radius:30px;pointer-events:none;box-shadow:0 0 30px #0f0;}
-    button{padding:16px 32px;margin:10px;font-size:18px;border:none;border-radius:12px;color:#fff;}
+    #overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+             width:220px;height:340px;border:5px solid #0f0;border-radius:30px;pointer-events:none;}
+    button{padding:16px 32px;margin:10px;font-size:18px;border:none;border-radius:12px;color:#fff;cursor:pointer;}
     .reg{background:#e74c3c;}
     .auth{background:#27ae60;}
     .del{background:#555;}
     .status{margin:20px;font-size:20px;font-weight:bold;}
-    .ok{color:#0f0;}
-    .no{color:#f33;}
+    
+    /* 팝업 스타일 - 완전히 구분 */
+    #popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);
+           padding:30px 50px;border-radius:20px;font-size:28px;font-weight:bold;
+           color:white;z-index:999;opacity:0;transition:all 0.4s;box-shadow:0 20px 60px rgba(0,0,0,0.8);}
+    .show{transform:translate(-50%,-50%) scale(1);opacity:1;}
+    .reg-ok{background:#27ae60;}   /* 등록 성공 */
+    .auth-ok{background:#3498db;}  /* 인증 성공 */
+    .auth-no{background:#e74c3c;}  /* 인증 실패 */
   </style>
 </head>
 <body>
-  <h2>손가락 지문 인증 (초점 완벽)</h2>
-  <p>손가락을 초록 테두리에 정확히 맞춰주세요</p>
+  <h2>손가락 지문 인증</h2>
+  <p>손가락을 초록 테두리에 맞춰주세요</p>
   
   <div style="position:relative;display:inline-block;">
     <video id="v" autoplay playsinline muted></video>
@@ -34,22 +41,25 @@
   <button class="auth" id="auth" disabled>지문 인증</button>
   <button class="del" id="del">삭제</button>
 
+  <!-- 팝업 3종 -->
+  <div id="popup"></div>
+
   <script>
     const v = document.getElementById('v');
     const c = document.getElementById('c');
     const ctx = c.getContext('2d');
     const s = document.getElementById('s');
+    const popup = document.getElementById('popup');
 
-    // 초점 강제 + 고해상도 + 후면카메라 강제
+    function showPopup(text, type) {
+      popup.textContent = text;
+      popup.className = type + " show";
+      setTimeout(() => popup.className = type, 3000);
+    }
+
     async function start() {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-          width: {ideal: 1920},
-          height: {ideal: 1080},
-          focusMode: "continuous",     // 연속 초점 강제
-          focusDistance: {ideal: 0.1} // 10cm 근접 초점 강제 (핸드폰 지원 시)
-        }
+        video: {facingMode:"environment", width:{ideal:1920}, height:{ideal:1080}}
       });
       v.srcObject = stream;
       v.onloadedmetadata = () => {
@@ -61,16 +71,10 @@
     function loop() {
       if (!v.videoWidth) return requestAnimationFrame(loop);
       ctx.drawImage(v, 0, 0);
-
-      // 중앙 손가락 영역만 잘라서 처리 → 초점 + 선명도 극대화
       const src = cv.imread(c);
-      const roi = new cv.Rect(
-        src.cols*0.35, src.rows*0.25,
-        src.cols*0.3, src.rows*0.5
-      );
+      const roi = new cv.Rect(src.cols*0.35, src.rows*0.25, src.cols*0.3, src.rows*0.5);
       const finger = src.roi(roi);
 
-      // 초점 보정 + 선명도 3배 강화
       const sharp = new cv.Mat();
       cv.GaussianBlur(finger, sharp, new cv.Size(0,0), 3);
       cv.addWeighted(finger, 1.8, sharp, -0.8, 0, sharp);
@@ -81,8 +85,7 @@
       cv.threshold(gray, bin, 0, 255, cv.THRESH_OTSU);
 
       const points = getMinutiae(bin);
-      s.textContent = `특징점 ${points.length}개 ${points.length>30?'(등록·인증 가능)':''}`;
-
+      s.textContent = `특징점 ${points.length}개${points.length>30?' (가능)':''}`;
       if (points.length > 30) {
         document.getElementById('reg').disabled = false;
         document.getElementById('auth').disabled = false;
@@ -96,15 +99,14 @@
     function getMinutiae(bin) {
       const skel = new cv.Mat();
       cv.ximgproc.thinning(bin, skel);
-      const pts = [], data = skel.data, w = skel.cols, h = skel.rows;
-      for (let y=8; y<h-8; y++) for (let x=8; x<w-8; x++) {
-        if (data[y*w+x]===255) {
+      const pts = [], d = skel.data, w = skel.cols, h = skel.rows;
+      for (let y=8; y<h-8; y++) for (let x=8; x<w-8; x++)
+        if (d[y*w+x]===255) {
           let n=0;
           for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++)
-            if (dx||dy) n += data[(y+dy)*w+(x+dx)]===255;
+            if (dx||dy) n += d[(y+dy)*w+(x+dx)]===255;
           if (n===1 || n===3) pts.push({x,y});
         }
-      }
       skel.delete();
       return pts;
     }
@@ -116,23 +118,28 @@
       return m / Math.max(a.length,b.length);
     }
 
+    // 등록
     document.getElementById('reg').onclick = () => {
       localStorage.setItem('fp', JSON.stringify(window.points));
-      s.innerHTML = '<span class="ok">지문 등록 완료!</span>';
+      showPopup("지문 등록 완료!", "reg-ok");
     };
 
+    // 인증
     document.getElementById('auth').onclick = () => {
       const saved = JSON.parse(localStorage.getItem('fp')||'[]');
-      if (!saved.length) return s.textContent = '등록된 지문 없음';
+      if (!saved.length) return showPopup("등록된 지문 없음", "auth-no");
       const score = match(window.points, saved);
-      s.innerHTML = score > 0.6
-        ? `<span class="ok">인증 성공! ${(score*100).toFixed(1)}%</span>`
-        : `<span class="no">인증 실패 ${(score*100).toFixed(1)}%</span>`;
+      if (score > 0.6) {
+        const time = new Date().toLocaleTimeString('ko-KR');
+        showPopup(`인증 성공!\n${time}`, "auth-ok");
+      } else {
+        showPopup(`인증 실패\n유사도 ${(score*100).toFixed(1)}%`, "auth-no");
+      }
     };
 
     document.getElementById('del').onclick = () => {
       localStorage.removeItem('fp');
-      s.textContent = '삭제됨';
+      showPopup("등록 삭제됨", "auth-no");
       document.getElementById('auth').disabled = true;
     };
 
