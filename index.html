@@ -3,104 +3,165 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>손 인식 정확도 99%</title>
+  <title>사진 1장으로 지문 추출 (실전용)</title>
   <script src="https://docs.opencv.org/4.x/opencv.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection@2.0.0"></script>
   <style>
-    body{background:#000;color:#0f0;font-family:sans-serif;text-align:center;padding:20px;}
-    video,img{max-width:500px;width:100%;border-radius:20px;margin:20px auto;display:block;}
-    button{padding:20px 60px;font-size:24px;background:#0f0;color:#000;border:none;border-radius:20px;}
-    .info{font-size:28px;margin:20px;}
+    body{background:#000;color:#0f0;font-family:monospace;text-align:center;padding:20px;}
+    input,button{margin:20px;padding:15px;font-size:20px;}
+    canvas,img{max-width:90%;border-radius:20px;margin:20px auto;display:block;border:3px solid #0f0;}
+    .step{margin:20px;padding:20px;background:#111;border:2px solid #0f0;border-radius:15px;}
+    .point{fill:#0ff;stroke:#000;stroke-width:2;}
   </style>
 </head>
 <body>
-  <h2>손가락만 99% 정확도로 잡아냅니다</h2>
-  <video id="v" autoplay playsinline muted></video>
-  <button onclick="capture()">촬영 → 손가락만 선명</button>
-  <div class="info" id="status">로딩 중...</div>
-  <img id="result" style="display:none;">
-  <canvas id="c" style="display:none;"></canvas>
+  <h1>손가락 사진 1장으로 지문 추출</h1>
+  <p>손가락 사진을 업로드 → 자동으로 지문 특징점 추출</p>
+
+  <input type="file" id="file" accept="image/*">
+  <button onclick="process()">지문 추출 시작</button>
+
+  <div class="step">
+    <h2>1. 원본 손가락 사진</h2>
+    <img id="original" alt="원본">
+  </div>
+
+  <div class="step">
+    <h2>2. 지문 영역 자동 추출 + 선명도 강화</h2>
+    <canvas id="enhanced"></canvas>
+  </div>
+
+  <div class="step">
+    <h2>3. 지문 능선 + 특징점 (파란점)</h2>
+    <canvas id="result"></canvas>
+    <h3 id="count">특징점: 0개</h3>
+  </div>
+
+  <button onclick="register()" id="reg" disabled style="background:#e74c3c;color:#fff;">지문 등록</button>
+  <button onclick="verify()" id="ver" disabled style="background:#27ae60;color:#fff;">지문 인증</button>
+  <h3 id="status" style="color:#0f0"></h3>
 
   <script>
-    const video = document.getElementById('v');
-    const canvas = document.getElementById('c');
-    const ctx = canvas.getContext('2d');
+    const fileInput = document.getElementById('file');
+    const original = document.getElementById('original');
+    const enhanced = document.getElementById('enhanced');
     const result = document.getElementById('result');
+    const count = document.getElementById('count');
     const status = document.getElementById('status');
-    let detector;
+    let currentPoints = [];
 
-    async function init() {
-      // 1. Lite 모델 (정확도 최고 + 빠름)
-      const model = handPoseDetection.SupportedModels.MediaPipeHands;
-      detector = await handPoseDetection.createDetector(model, {
-        runtime: 'tfjs',
-        modelType: 'lite',           // ← 여기만 바꿔도 정확도 폭발
-        maxHands: 1,
-        solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands'
-      });
+    fileInput.onchange = () => {
+      const file = fileInput.files[0];
+      if (file) {
+        original.src = URL.createObjectURL(file);
+        original.onload = () => process();
+      }
+    };
 
-      // 2. 카메라 고해상도 + 후면 강제
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-          width: { exact: 1280 },    // ← 1280×720 강제
-          height: { exact: 720 }
-        }
-      });
-      video.srcObject = stream;
-      status.textContent = "준비 완료! 손가락 보여주세요";
-    }
+    function process() {
+      const img = cv.imread(original);
+      const gray = new cv.Mat();
+      cv.cvtColor(img, gray, cv.COLOR_RGBA2GRAY);
 
-    async function capture() {
-      ctx.drawImage(video, 0, 0);
-      const src = cv.imread(canvas);
-
-      // 전체 블러
+      // 1. 자동으로 손가락 영역 찾기 (가장 밝고 둥근 부분)
       const blurred = new cv.Mat();
-      cv.GaussianBlur(src, blurred, new cv.Size(151,151), 90);
+      cv.GaussianBlur(gray, blurred, new cv.Size(21,21), 0);
+      const thresh = new cv.Mat();
+      cv.threshold(blurred, thresh, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+      const contours = new cv.MatVector();
+      const hierarchy = new cv.Mat();
+      cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-      // 손가락 탐지 (정확도 옵션 최적화)
-      const hands = await detector.estimateHands(video, {
-        flipHorizontal: false
-      });
-
-      if (hands.length > 0 && hands[0].score > 0.75) {  // 5번: 신뢰도 75% 이상만
-        const kp = hands[0].keypoints;
-        let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
-        kp.forEach(p => {
-          minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-          maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
-        });
-
-        // 4번: 여유 1.4배 확대
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        const width = (maxX - minX) * 1.4;
-        const height = (maxY - minY) * 1.4;
-
-        const x = Math.max(0, centerX - width/2);
-        const y = Math.max(0, centerY - height/2);
-        const w = Math.min(src.cols - x, width);
-        const h = Math.min(src.rows - y, height);
-
-        const roi = new cv.Rect(x, y, w, h);
-        const finger = src.roi(roi);
-        blurred.roi(roi).copyTo(finger);
-
-        status.textContent = `손가락 정확도 ${(hands[0].score*100).toFixed(1)}%`;
-      } else {
-        status.textContent = "손가락을 찾지 못했습니다";
+      let maxArea = 0, best = null;
+      for (let i = 0; i < contours.size(); i++) {
+        const area = cv.contourArea(contours.get(i));
+        if (area > maxArea) { maxArea = area; best = contours.get(i); }
       }
 
-      cv.imshow(canvas, blurred);
-      result.src = canvas.toDataURL();
-      result.style.display = 'block';
+      if (!best) { alert("손가락을 찾지 못했습니다"); return; }
 
-      src.delete(); blurred.delete();
+      const mask = cv.Mat.zeros(img.rows, img.cols, cv.CV_8U);
+      cv.drawContours(mask, new cv.MatVector(best), -1, new cv.Scalar(255), -1);
+      const finger = new cv.Mat();
+      img.copyTo(finger, mask);
+
+      // 2. 지문 선명도 극대화 (실전용 필터)
+      const clahe = cv.createCLAHE(3, new cv.Size(8,8));
+      const enhancedGray = new cv.Mat();
+      clahe.apply(gray, enhancedGray);
+      const sharp = new cv.Mat();
+      cv.GaussianBlur(enhancedGray, sharp, new cv.Size(0,0), 1);
+      cv.addWeighted(enhancedGray, 2.5, sharp, -1.5, 0, sharp);
+
+      const bin = new cv.Mat();
+      cv.adaptiveThreshold(sharp, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 10);
+
+      // 3. 스켈레톤 + minutiae 추출
+      const skel = new cv.Mat();
+      cv.ximgproc.thinning(bin, skel);
+
+      const points = [];
+      const data = skel.data;
+      const w = skel.cols, h = skel.rows;
+      for (let y = 10; y < h-10; y++) {
+        for (let x = 10; x < w-10; x++) {
+          if (data[y*w + x] === 255) {
+            let neighbors = 0;
+            for (let dy = -1; dy <= 1; dy++)
+              for (let dx = -1; dx <= 1; dx++)
+                if (dx || dy) neighbors += data[(y+dy)*w + (x+dx)] === 255;
+            if (neighbors === 1 || neighbors === 3) points.push({x, y});
+          }
+        }
+      }
+
+      // 결과 표시
+      cv.imshow(enhanced, sharp);
+      const resultMat = cv.Mat.zeros(skel.rows, skel.cols, cv.CV_8UC3);
+      skel.convertTo(resultMat, cv.CV_8UC3, 255);
+      points.forEach(p => {
+        cv.circle(resultMat, new cv.Point(p.x, p.y), 6, new cv.Scalar(0,255,255), -1);
+      });
+      cv.imshow(result, resultMat);
+
+      count.textContent = `지문 특징점: ${points.length}개`;
+      currentPoints = points;
+
+      if (points.length > 40) {
+        document.getElementById('reg').disabled = false;
+        document.getElementById('ver').disabled = false;
+        status.textContent = "지문 추출 완료! 등록·인증 가능";
+      } else {
+        status.textContent = "지문이 흐려요. 더 가까이 선명하게 찍어주세요";
+      }
+
+      img.delete(); gray.delete(); blurred.delete(); thresh.delete();
+      mask.delete(); finger.delete(); enhancedGray.delete(); sharp.delete();
+      bin.delete(); skel.delete(); resultMat.delete();
     }
 
-    cv.onRuntimeInitialized = init;
+    function register() {
+      localStorage.setItem('fingerprint', JSON.stringify(currentPoints));
+      status.innerHTML = '<span style="color:#0f0">지문 등록 완료!</span>';
+    }
+
+    function verify() {
+      const saved = JSON.parse(localStorage.getItem('fingerprint') || '[]');
+      if (!saved.length) return alert('등록된 지문 없음');
+
+      let match = 0;
+      for (const p of currentPoints)
+        for (const q of saved)
+          if (Math.hypot(p.x-q.x, p.y-q.y) < 30) { match++; break; }
+
+      const score = (match / Math.max(currentPoints.length, saved.length)) * 100;
+      status.innerHTML = score > 60
+        ? `<span style="color:#0f0">인증 성공! ${score.toFixed(1)}%</span>`
+        : `<span style="color:#f00">인증 실패 ${score.toFixed(1)}%</span>`;
+    }
+
+    cv.onRuntimeInitialized = () => {
+      status.textContent = "준비 완료! 손가락 사진 업로드하세요";
+    };
   </script>
 </body>
 </html>
