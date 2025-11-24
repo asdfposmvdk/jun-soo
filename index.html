@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>손가락만 선명하게 촬영</title>
+  <title>20cm 배경 완전 블러 지문 인증</title>
   <script src="https://docs.opencv.org/4.x/opencv.js"></script>
   <style>
     body{margin:0;background:#000;color:#fff;font-family:sans-serif;text-align:center;padding:20px;}
     #box{position:relative;display:inline-block;}
-    video,canvas{width:100%;max-width:500px;border-radius:24px;}
+    video,canvas,img{width:100%;max-width:500px;border-radius:24px;margin-top:20px;}
     #guide{
       position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
       width:260px;height:380px;border:6px solid #0f0;border-radius:40px;
@@ -16,6 +16,7 @@
     button{
       margin-top:30px;padding:20px 50px;font-size:24px;background:#0f0;color:#000;
       border:none;border-radius:20px;font-weight:bold;cursor:pointer;}
+    .result{text-align:center;font-size:28px;margin:30px;color:#0f0;}
   </style>
 </head>
 <body>
@@ -30,11 +31,15 @@
   <button onclick="shoot()">촬영하기</button>
 
   <canvas id="c" style="display:none;"></canvas>
+  <img id="resultImg" alt="촬영 결과" style="display:none;">
+  <div class="result" id="result">촬영 후 결과가 여기 나타납니다</div>
 
   <script>
     const video = document.getElementById('v');
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d');
+    const resultImg = document.getElementById('resultImg');
+    const result = document.getElementById('result');
 
     // 카메라 시작
     async function start() {
@@ -44,7 +49,7 @@
       video.srcObject = stream;
     }
 
-    // 촬영 → 배경 완전 블러 + 손가락만 선명
+    // 촬영 → 배경 완전 블러 + 손가락만 선명 + 결과 보여주기
     function shoot() {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -66,11 +71,12 @@
       const finger = src.roi(roi);
       blurred.roi(roi).copyTo(finger);
 
-      // 결과 표시
+      // 결과 표시: 캔버스 → 이미지 src로 변환
       cv.imshow(canvas, blurred);
-      document.querySelector('#box video').style.display = 'none';
-      document.querySelector('#box canvas').style.display = 'block';
-      document.querySelector('button').textContent = '다시 촬영';
+      resultImg.src = canvas.toDataURL('image/png');
+      resultImg.style.display = 'block';
+
+      result.textContent = '촬영 결과: 배경 블러 처리 완료! 손가락만 선명하게 보입니다.';
 
       src.delete(); blurred.delete(); finger.delete();
     }
