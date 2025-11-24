@@ -3,45 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>20cm 배경 완전 블러 지문 인증</title>
+  <title>손가락만 선명하게 촬영</title>
   <script src="https://docs.opencv.org/4.x/opencv.js"></script>
   <style>
     body{margin:0;background:#000;color:#fff;font-family:sans-serif;text-align:center;padding:20px;}
-    #container{position:relative;display:inline-block;}
-    video, canvas{width:100%;max-width:500px;border-radius:20px;}
-    #overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-             width:260px;height:380px;border:6px solid #0f0;border-radius:40px;pointer-events:none;z-index:10;}
-    button{padding:18px 40px;margin:15px;font-size:22px;border:none;border-radius:16px;color:#fff;font-weight:bold;cursor:pointer;}
-    .capture{background:#27ae60;}
-    .reg{background:#e74c3c;}
-    .auth{background:#3498db;}
-    .del{background:#555;}
-    .result{font-size:28px;margin:20px;padding:20px;background:rgba(0,255,0,0.2);border-radius:16px;}
+    #box{position:relative;display:inline-block;}
+    video,canvas{width:100%;max-width:500px;border-radius:24px;}
+    #guide{
+      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      width:260px;height:380px;border:6px solid #0f0;border-radius:40px;
+      pointer-events:none;box-shadow:0 0 40px #0f0;}
+    button{
+      margin-top:30px;padding:20px 50px;font-size:24px;background:#0f0;color:#000;
+      border:none;border-radius:20px;font-weight:bold;cursor:pointer;}
   </style>
 </head>
 <body>
-  <h2>손가락 지문 인증</h2>
-  <p>손가락을 초록 테두리에 맞추고 <b>촬영</b> 버튼을 누르세요</p>
-
-  <div id="container">
-    <video id="video" autoplay playsinline muted></video>
-    <div id="overlay"></div>
+  <h2>손가락을 초록 테두리에 맞추고<br>촬영 버튼을 누르세요</h2>
+  
+  <div id="box">
+    <video id="v" autoplay playsinline muted></video>
+    <div id="guide"></div>
   </div>
 
-  <button class="capture" onclick="capture()">촬영하기</button><br>
-  <button class="reg" onclick="register()" id="regBtn" disabled>지문 등록</button>
-  <button class="auth" onclick="verify()" id="authBtn" disabled>지문 인증</button>
-  <button class="del" onclick="localStorage.removeItem('fp');alert('삭제됨')">삭제</button>
+  <br>
+  <button onclick="shoot()">촬영하기</button>
 
-  <div class="result" id="result">촬영 후 자동으로 배경이 블러됩니다</div>
-  <canvas id="canvas" style="display:none;"></canvas>
+  <canvas id="c" style="display:none;"></canvas>
 
   <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
+    const video = document.getElementById('v');
+    const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d');
-    const result = document.getElementById('result');
 
+    // 카메라 시작
     async function start() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {facingMode: "environment", width: {ideal: 1920}, height: {ideal: 1080}}
@@ -49,7 +44,8 @@
       video.srcObject = stream;
     }
 
-    function capture() {
+    // 촬영 → 배경 완전 블러 + 손가락만 선명
+    function shoot() {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0);
@@ -62,78 +58,21 @@
         src.cols * 0.36, src.rows * 0.60
       );
 
-      // 20cm 이상 배경 → 완전 블러 처리
+      // 배경 완전 블러 (20cm 이상처럼)
       const blurred = new cv.Mat();
-      cv.GaussianBlur(src, blurred, new cv.Size(111, 111), 60);
+      cv.GaussianBlur(src, blurred, new cv.Size(121, 121), 70);
 
-      // 손가락 부분만 선명하게 복원
+      // 손가락 부분만 원본으로 복사 → 자동 초점 효과
       const finger = src.roi(roi);
       blurred.roi(roi).copyTo(finger);
 
-      // 결과 화면에 표시
+      // 결과 표시
       cv.imshow(canvas, blurred);
-      document.querySelector('#container canvas').style.display = 'block';
-      document.querySelector('#container video').style.display = 'none';
+      document.querySelector('#box video').style.display = 'none';
+      document.querySelector('#box canvas').style.display = 'block';
+      document.querySelector('button').textContent = '다시 촬영';
 
-      // 지문 분석 (선명한 손가락 부분만)
-      const sharp = new cv.Mat();
-      cv.GaussianBlur(finger, sharp, new cv.Size(0,0), 2.5);
-      cv.addWeighted(finger, 2.2, sharp, -1.2, 0, sharp);
-
-      const gray = new cv.Mat();
-      cv.cvtColor(sharp, gray, cv.COLOR_RGBA2GRAY);
-      const bin = new cv.Mat();
-      cv.threshold(gray, bin, 0, 255, cv.THRESH_OTSU);
-
-      const skel = new cv.Mat();
-      cv.ximgproc.thinning(bin, skel);
-
-      const points = getMinutiae(skel);
-      result.innerHTML = `촬영 완료!<br>특징점 ${points.length}개 감지됨`;
-
-      if (points.length > 40) {
-        window.currentPoints = points.map(p => ({x: p.x + roi.x, y: p.y + roi.y}));
-        document.getElementById('regBtn').disabled = false;
-        document.getElementById('authBtn').disabled = false;
-        result.innerHTML += `<br><b>등록·인증 가능!</b>`;
-      } else {
-        result.innerHTML += `<br><span style="color:#f00">지문이 흐려요. 더 가까이 대주세요</span>`;
-      }
-
-      src.delete(); blurred.delete(); finger.delete(); sharp.delete();
-      gray.delete(); bin.delete(); skel.delete();
-    }
-
-    function getMinutiae(mat) {
-      const pts = [], d = mat.data, w = mat.cols, h = mat.rows;
-      for (let y = 10; y < h-10; y++)
-        for (let x = 10; x < w-10; x++)
-          if (d[y*w + x] === 255) {
-            let n = 0;
-            for (let dy = -1; dy <= 1; dy++)
-              for (let dx = -1; dx <= 1; dx++)
-                if (dx || dy) if (d[(y+dy)*w + (x+dx)] === 255) n++;
-            if (n === 1 || n === 3) pts.push({x, y});
-          }
-      return pts;
-    }
-
-    function register() {
-      localStorage.setItem('fp', JSON.stringify(window.currentPoints));
-      result.innerHTML = '<span style="color:#0f0;font-size:32px;">지문 등록 완료!</span>';
-    }
-
-    function verify() {
-      const saved = JSON.parse(localStorage.getItem('fp') || '[]');
-      if (!saved.length) return alert('등록된 지문 없음');
-      let match = 0;
-      for (const p of window.currentPoints)
-        for (const q of saved)
-          if (Math.hypot(p.x-q.x, p.y-q.y) < 28) { match++; break; }
-      const score = match / Math.max(window.currentPoints.length, saved.length);
-      result.innerHTML = score > 0.62
-        ? `<span style="color:#0f0;font-size:32px;">인증 성공! ${(score*100).toFixed(1)}%</span>`
-        : `<span style="color:#f00;font-size:32px;">인증 실패 ${(score*100).toFixed(1)}%</span>`;
+      src.delete(); blurred.delete(); finger.delete();
     }
 
     cv.onRuntimeInitialized = start;
