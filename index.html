@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AILee Cam - 후면카메라 지문 캡처 데모</title>
+  <title>AILee Cam - 후면카메라 지문 캡처 + AI 선명도 점수</title>
 
   <!--
-    AILee Cam - Rear Camera Finger Capture Demo
+    AILee Cam - Rear Camera Finger Capture + Quality Score Demo
     MIT License (c) 2025 깽호
 
-    목적: 모바일 후면 카메라로 지문이 "사진에서 눈으로 보일 정도"로 선명하게 찍히도록
-         카메라 설정(후면, 고해상도, 초점/줌 힌트)을 최대한 적용한 데모 페이지
+    ⚠ 이 데모의 "AI 인식 점수"는 실제 지문 인증/식별이 아니라,
+      캡처된 사진에서 지문 선(디테일)과 대비(컨트라스트)가
+      얼마나 잘 보이는지에 대한 대략적인 품질 추정입니다.
   -->
 
   <style>
@@ -180,13 +181,49 @@
       color:#555;
       margin-top:6px;
     }
+
+    /* AI 인식/선명도 점수 표시 */
+    .ai-quality {
+      margin-top:10px;
+      padding:8px 10px;
+      border-radius:6px;
+      background:#f5f7fb;
+      font-size:12px;
+    }
+    .ai-quality h2 {
+      font-size:13px;
+      margin-bottom:6px;
+      color:#333;
+    }
+    .ai-bar {
+      width:100%;
+      height:10px;
+      border-radius:999px;
+      background:#e0e3f0;
+      overflow:hidden;
+      margin-bottom:6px;
+    }
+    .ai-bar-fill {
+      height:100%;
+      width:0%;
+      border-radius:999px;
+      background:linear-gradient(90deg,#ff6b6b,#feca57,#1dd1a1);
+      transition:width 0.3s ease;
+    }
+    .ai-score-text {
+      font-size:12px;
+      color:#444;
+    }
+    .ai-score-text b {
+      font-size:13px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
       <h1>AILee Cam</h1>
-      <p>후면 카메라 지문 캡처 데모 (지문선이 보일 정도로)</p>
+      <p>후면 카메라 지문 캡처 + AI 선명도 점수</p>
     </div>
 
     <div id="statusMessage" class="message info show">
@@ -223,6 +260,17 @@
       <h2>캡처된 지문 이미지 미리보기</h2>
       <img id="capturedImage" class="preview-img" alt="캡처된 지문 이미지" />
       <div id="captureMeta" class="meta"></div>
+
+      <!-- AI 품질/인식 점수 영역 -->
+      <div class="ai-quality">
+        <h2>AI 지문 인식/선명도 추정</h2>
+        <div class="ai-bar">
+          <div id="aiBarFill" class="ai-bar-fill"></div>
+        </div>
+        <div id="aiScoreText" class="ai-score-text">
+          아직 캡처된 이미지가 없습니다. 먼저 위에서 [지문 캡처]를 눌러주세요.
+        </div>
+      </div>
     </div>
   </div>
 
@@ -241,11 +289,14 @@
     const capturedImage = document.getElementById("capturedImage");
     const captureMeta   = document.getElementById("captureMeta");
 
+    const aiBarFill     = document.getElementById("aiBarFill");
+    const aiScoreText   = document.getElementById("aiScoreText");
+
     function setStatus(type, text){
       statusMessage.textContent = text;
       statusMessage.classList.add("show");
       statusMessage.classList.remove("info","warn","error","success");
-      if(type === "info")    statusMessage.classList.add("info");
+      if(type === "info")       statusMessage.classList.add("info");
       else if(type === "warn")  statusMessage.classList.add("warn");
       else if(type === "error") statusMessage.classList.add("error");
       else if(type === "success") statusMessage.classList.add("success");
@@ -267,7 +318,6 @@
         stopBtn.classList.remove("btn-disabled");
         captureBtn.disabled  = false;
         captureBtn.classList.remove("btn-disabled");
-        // 아직 캡처 전이므로 다운로드는 비활성
         downloadBtn.disabled = !lastCaptureDataUrl;
         downloadBtn.classList.toggle("btn-disabled", !lastCaptureDataUrl);
       } else if(state === "captured"){
@@ -330,7 +380,7 @@
               advanced.push({ focusMode: "continuous" });
             }
             if(caps.focusMode && caps.focusMode.includes("macro")){
-              // 지문처럼 가까운 피사체를 위한 모드가 있으면 활용
+              // 지문처럼 가까운 피사체용 모드가 있다면 사용
               advanced.push({ focusMode: "macro" });
             }
             if(caps.zoom && typeof caps.zoom.max === "number"){
@@ -399,8 +449,111 @@
       capturedImage.src = lastCaptureDataUrl;
 
       captureMeta.textContent = `해상도: ${vw} x ${vh} / JPEG 품질: 0.95`;
-      setStatus("success","캡처 완료! 아래 미리보기에서 지문 선이 잘 보이는지 확인해보세요.");
+      setStatus("success","캡처 완료! 아래 미리보기와 AI 점수를 확인해 보세요.");
+
+      // 🔍 AI 인식/선명도 점수 계산
+      const score = analyzeFingerprintQuality();
+      updateAiScore(score);
+
       setButtons("captured");
+    }
+
+    // 지문 인식/선명도 품질 추정
+    // - 중앙 영역(이미지 전체의 약 40% 정사각형)을 대상으로
+    //   - 대비(밝기 표준편차)
+    //   - 엣지(이웃 픽셀 밝기 차이)
+    //   두 값을 합쳐 0~1 사이로 정규화
+    function analyzeFingerprintQuality(){
+      if(!canvasEl) return 0;
+
+      const w = canvasEl.width;
+      const h = canvasEl.height;
+      if(!w || !h) return 0;
+
+      const ctx = canvasEl.getContext("2d");
+      const img = ctx.getImageData(0,0,w,h);
+      const data = img.data;
+
+      // 중앙부 40% 영역만 분석 (가장 지문이 있을 법한 곳)
+      const x0 = Math.floor(w * 0.3);
+      const x1 = Math.floor(w * 0.7);
+      const y0 = Math.floor(h * 0.3);
+      const y1 = Math.floor(h * 0.7);
+
+      let sum = 0;
+      let sumSq = 0;
+      let count = 0;
+
+      let edgeSum = 0;
+      let edgeCount = 0;
+
+      for(let y = y0; y < y1-1; y++){
+        for(let x = x0; x < x1-1; x++){
+          const idx = (y * w + x) * 4;
+          const r = data[idx];
+          const g = data[idx+1];
+          const b = data[idx+2];
+          const gray = 0.299*r + 0.587*g + 0.114*b;
+
+          sum += gray;
+          sumSq += gray * gray;
+          count++;
+
+          // 간단 엣지: 오른쪽, 아래쪽과의 밝기 차이
+          const idxR = (y * w + (x+1)) * 4;
+          const idxD = ((y+1) * w + x) * 4;
+          const grayR = 0.299*data[idxR]   + 0.587*data[idxR+1]   + 0.114*data[idxR+2];
+          const grayD = 0.299*data[idxD]   + 0.587*data[idxD+1]   + 0.114*data[idxD+2];
+
+          const diffR = Math.abs(gray - grayR);
+          const diffD = Math.abs(gray - grayD);
+
+          edgeSum += diffR + diffD;
+          edgeCount += 2;
+        }
+      }
+
+      if(count === 0) return 0;
+
+      const mean = sum / count;
+      const variance = (sumSq / count) - (mean*mean);
+      const stdev = Math.sqrt(Math.max(variance, 0));
+
+      const edgeAvg = edgeCount > 0 ? edgeSum / edgeCount : 0;
+
+      // 경험적으로 정한 정규화 기준 (대략적인 값)
+      const contrastNorm = Math.min(stdev / 40, 1);   // 0~40 정도를 유의미한 대비로 가정
+      const edgeNorm     = Math.min(edgeAvg / 25, 1); // 0~25 정도를 유의미한 엣지 세기
+
+      // 대비 40%, 엣지 60% 가중치
+      const score = Math.max(0, Math.min(1, 0.4*contrastNorm + 0.6*edgeNorm));
+
+      return score;
+    }
+
+    function updateAiScore(score){
+      const pct = Math.round(score * 100);
+
+      aiBarFill.style.width = pct + "%";
+
+      let levelText = "";
+      let levelDesc = "";
+
+      if(pct < 40){
+        levelText = "낮음";
+        levelDesc = "지문 선이 거의 보이지 않거나 흐릿합니다. 카메라에 좀 더 가깝게/조명 조정 후 다시 캡처해 주세요.";
+      } else if(pct < 70){
+        levelText = "보통";
+        levelDesc = "지문이 어느 정도 보이지만, 더 선명하게 찍으면 인식 정확도가 올라갈 수 있습니다.";
+      } else {
+        levelText = "좋음";
+        levelDesc = "지문 선이 비교적 잘 보입니다. 이 정도면 인식에 사용할 수 있는 수준입니다.";
+      }
+
+      aiScoreText.innerHTML =
+        `추정 인식/선명도: <b>${pct}% (${levelText})</b><br/>` +
+        `<span style="font-size:11px;color:#666;">※ 실제 지문 인증이 아니라, 이미지 디테일 기반의 대략적인 품질 추정입니다.</span><br/>` +
+        `<span style="font-size:12px;">${levelDesc}</span>`;
     }
 
     function downloadImage(){
