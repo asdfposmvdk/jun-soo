@@ -3,145 +3,168 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>지문 인증 - 상태 완벽 구분</title>
+  <title>실시간 지문 분석 시각화</title>
   <script src="https://docs.opencv.org/4.x/opencv.js"></script>
   <style>
-    body{margin:0;background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:20px;}
-    video{width:100%;max-width:480px;border-radius:20px;}
+    body{margin:0;background:#000;color:#0f0;font-family:monospace;text-align:center;padding:10px;}
+    .row{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:10px 0;}
+    .box{background:#111;border:2px solid #0f0;border-radius:12px;padding:10px;position:relative;}
+    video,canvas{width:100%;max-width:420px;border-radius:10px;}
+    h3{margin:5px 0;color:#0f0;}
+    .step{font-size:14px;margin:5px;}
+    .points circle{fill:#0ff;stroke:#000;stroke-width:2;}
     #overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-             width:220px;height:340px;border:5px solid #0f0;border-radius:30px;pointer-events:none;}
-    button{padding:16px 32px;margin:10px;font-size:18px;border:none;border-radius:12px;color:#fff;cursor:pointer;}
-    .reg{background:#e74c3c;}
-    .auth{background:#27ae60;}
-    .del{background:#555;}
-    .status{margin:20px;font-size:20px;font-weight:bold;}
-    
-    /* 팝업 스타일 - 완전히 구분 */
-    #popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);
-           padding:30px 50px;border-radius:20px;font-size:28px;font-weight:bold;
-           color:white;z-index:999;opacity:0;transition:all 0.4s;box-shadow:0 20px 60px rgba(0,0,0,0.8);}
-    .show{transform:translate(-50%,-50%) scale(1);opacity:1;}
-    .reg-ok{background:#27ae60;}   /* 등록 성공 */
-    .auth-ok{background:#3498db;}  /* 인증 성공 */
-    .auth-no{background:#e74c3c;}  /* 인증 실패 */
+             width:220px;height:340px;border:4px dashed #0f0;border-radius:30px;pointer-events:none;}
   </style>
 </head>
 <body>
-  <h2>손가락 지문 인증</h2>
-  <p>손가락을 초록 테두리에 맞춰주세요</p>
-  
+  <h2>실시간 지문 분석 과정 보기</h2>
   <div style="position:relative;display:inline-block;">
     <video id="v" autoplay playsinline muted></video>
     <div id="overlay"></div>
   </div>
-  
-  <canvas id="c" style="display:none"></canvas>
-  <div class="status" id="s">준비 중...</div>
-  <button class="reg" id="reg">지문 등록</button>
-  <button class="auth" id="auth" disabled>지문 인증</button>
-  <button class="del" id="del">삭제</button>
 
-  <!-- 팝업 3종 -->
-  <div id="popup"></div>
+  <div class="row">
+    <div class="box">
+      <h3>1. 원본 손가락</h3>
+      <canvas id="orig"></canvas>
+    </div>
+    <div class="box">
+      <h3>2. 선명도 강화</h3>
+      <canvas id="sharp"></canvas>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="box">
+      <h3>3. 이진화 (능선만)</h3>
+      <canvas id="bin"></canvas>
+    </div>
+    <div class="box">
+      <h3>4. 스켈레톤</h3>
+      <canvas id="skel"></canvas>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="box">
+      <h3>5. 특징점 실시간 추출</h3>
+      <canvas id="points"></canvas>
+      <div class="step" id="count">특징점: 0개</div>
+    </div>
+  </div>
+
+  <div style="margin:20px;">
+    <button onclick="reg()" style="padding:15px 30px;font-size:20px;background:#e74c3c;color:#fff;border:none;border-radius:12px;">지문 등록</button>
+    <button onclick="auth()" id="authBtn" disabled style="padding:15px 30px;font-size:20px;background:#27ae60;color:#fff;border:none;border-radius:12px;">지문 인증</button>
+  </div>
+  <div id="result" style="font-size:28px;font-weight:bold;margin:20px;"></div>
 
   <script>
     const v = document.getElementById('v');
-    const c = document.getElementById('c');
-    const ctx = c.getContext('2d');
-    const s = document.getElementById('s');
-    const popup = document.getElementById('popup');
-
-    function showPopup(text, type) {
-      popup.textContent = text;
-      popup.className = type + " show";
-      setTimeout(() => popup.className = type, 3000);
-    }
+    const canvases = {
+      orig: document.getElementById('orig'),
+      sharp: document.getElementById('sharp'),
+      bin: document.getElementById('bin'),
+      skel: document.getElementById('skel'),
+      points: document.getElementById('points')
+    };
+    Object.values(canvases).forEach(c => c.width = 400);
 
     async function start() {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {facingMode:"environment", width:{ideal:1920}, height:{ideal:1080}}
+        video: {facingMode:"environment", width:{ideal:1920}}
       });
       v.srcObject = stream;
-      v.onloadedmetadata = () => {
-        c.width = v.videoWidth; c.height = v.videoHeight;
-        loop();
-      };
+      v.onloadedmetadata = () => loop();
     }
 
     function loop() {
       if (!v.videoWidth) return requestAnimationFrame(loop);
-      ctx.drawImage(v, 0, 0);
-      const src = cv.imread(c);
+      const src = cv.imread(v);
+      
+      // 1. 중앙 손가락 영역 자르기
       const roi = new cv.Rect(src.cols*0.35, src.rows*0.25, src.cols*0.3, src.rows*0.5);
       const finger = src.roi(roi);
+      cv.imshow(canvases.orig, finger);
 
+      // 2. 선명도 강화 (언샤프 마스크)
+      const blurred = new cv.Mat();
+      cv.GaussianBlur(finger, blurred, new cv.Size(0,0), 3);
       const sharp = new cv.Mat();
-      cv.GaussianBlur(finger, sharp, new cv.Size(0,0), 3);
-      cv.addWeighted(finger, 1.8, sharp, -0.8, 0, sharp);
+      cv.addWeighted(finger, 1.9, blurred, -0.9, 0, sharp);
+      cv.imshow(canvases.sharp, sharp);
 
+      // 3. 이진화
       const gray = new cv.Mat();
       cv.cvtColor(sharp, gray, cv.COLOR_RGBA2GRAY);
       const bin = new cv.Mat();
       cv.threshold(gray, bin, 0, 255, cv.THRESH_OTSU);
+      cv.imshow(canvases.bin, bin);
 
-      const points = getMinutiae(bin);
-      s.textContent = `특징점 ${points.length}개${points.length>30?' (가능)':''}`;
-      if (points.length > 30) {
-        document.getElementById('reg').disabled = false;
-        document.getElementById('auth').disabled = false;
-        window.points = points;
+      // 4. 스켈레톤화
+      const skel = new cv.Mat();
+      cv.ximgproc.thinning(bin, skel);
+      cv.imshow(canvases.skel, skel);
+
+      // 5. 특징점 추출 + 시각화
+      const points = getMinutiae(skel);
+      const ptsCanvas = canvases.points;
+      const ctx = ptsCanvas.getContext('2d');
+      ctx.clearRect(0,0,ptsCanvas.width,ptsCanvas.height);
+      ctx.drawImage(canvases.skel, 0, 0, ptsCanvas.width, ptsCanvas.height);
+      ctx.fillStyle = '#0ff';
+      points.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x*(ptsCanvas.width/skel.cols), p.y*(ptsCanvas.height/skel.rows), 6, 0, Math.PI*2);
+        ctx.fill();
+      });
+
+      document.getElementById('count').textContent = `특징점: ${points.length}개`;
+      if (points.length > 35) {
+        window.currentPoints = points;
+        document.getElementById('authBtn').disabled = false;
       }
 
-      src.delete(); finger.delete(); sharp.delete(); gray.delete(); bin.delete();
+      // 메모리 정리
+      src.delete(); finger.delete(); blurred.delete(); sharp.delete(); 
+      gray.delete(); bin.delete(); skel.delete();
       requestAnimationFrame(loop);
     }
 
-    function getMinutiae(bin) {
-      const skel = new cv.Mat();
-      cv.ximgproc.thinning(bin, skel);
-      const pts = [], d = skel.data, w = skel.cols, h = skel.rows;
-      for (let y=8; y<h-8; y++) for (let x=8; x<w-8; x++)
+    function getMinutiae(mat) {
+      const pts = [], d = mat.data, w = mat.cols, h = mat.rows;
+      for (let y=10; y<h-10; y++) for (let x=10; x<w-10; x++) {
         if (d[y*w+x]===255) {
           let n=0;
           for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++)
             if (dx||dy) n += d[(y+dy)*w+(x+dx)]===255;
           if (n===1 || n===3) pts.push({x,y});
         }
-      skel.delete();
+      }
       return pts;
     }
 
     function match(a,b) {
       let m=0;
       for (const p of a) for (const q of b)
-        if (Math.hypot(p.x-q.x,p.y-q.y)<22) {m++; break;}
+        if (Math.hypot(p.x-q.x, p.y-q.y)<22) {m++; break;}
       return m / Math.max(a.length,b.length);
     }
 
-    // 등록
-    document.getElementById('reg').onclick = () => {
-      localStorage.setItem('fp', JSON.stringify(window.points));
-      showPopup("지문 등록 완료!", "reg-ok");
-    };
+    function reg() {
+      localStorage.setItem('fp', JSON.stringify(window.currentPoints));
+      document.getElementById('result').innerHTML = '<span style="color:#0f0">등록 완료!</span>';
+    }
 
-    // 인증
-    document.getElementById('auth').onclick = () => {
+    function auth() {
       const saved = JSON.parse(localStorage.getItem('fp')||'[]');
-      if (!saved.length) return showPopup("등록된 지문 없음", "auth-no");
-      const score = match(window.points, saved);
-      if (score > 0.6) {
-        const time = new Date().toLocaleTimeString('ko-KR');
-        showPopup(`인증 성공!\n${time}`, "auth-ok");
-      } else {
-        showPopup(`인증 실패\n유사도 ${(score*100).toFixed(1)}%`, "auth-no");
-      }
-    };
-
-    document.getElementById('del').onclick = () => {
-      localStorage.removeItem('fp');
-      showPopup("등록 삭제됨", "auth-no");
-      document.getElementById('auth').disabled = true;
-    };
+      if (!saved.length) return alert('등록된 지문 없음');
+      const score = match(window.currentPoints, saved);
+      document.getElementById('result').innerHTML = score > 0.6 
+        ? `<span style="color:#0f0">인증 성공! ${(score*100).toFixed(1)}%</span>`
+        : `<span style="color:#f00">인증 실패 ${(score*100).toFixed(1)}%</span>`;
+    }
 
     cv.onRuntimeInitialized = start;
   </script>
