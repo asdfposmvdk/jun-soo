@@ -3,120 +3,94 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>실시간 지문 분석 시각화</title>
+  <title>실시간 지문 분석 - 아래 다 뜸!</title>
   <script src="https://docs.opencv.org/4.x/opencv.js"></script>
   <style>
-    body{margin:0;background:#000;color:#0f0;font-family:monospace;text-align:center;padding:10px;}
-    .row{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:10px 0;}
-    .box{background:#111;border:2px solid #0f0;border-radius:12px;padding:10px;position:relative;}
-    video,canvas{width:100%;max-width:420px;border-radius:10px;}
-    h3{margin:5px 0;color:#0f0;}
-    .step{font-size:14px;margin:5px;}
-    .points circle{fill:#0ff;stroke:#000;stroke-width:2;}
+    body{margin:0;background:#000;color:#0f0;font-family:sans-serif;padding:10px;}
+    video,canvas{width:100%;max-width:460px;border-radius:12px;margin:10px auto;display:block;}
+    .box{background:#111;border:2px solid #0f0;border-radius:12px;padding:15px;margin:15px auto;max-width:460px;}
+    h3{color:#0f0;margin:10px 0;}
+    #status{position:fixed;top:10px;left:10px;right:10px;background:rgba(0,255,0,0.2);padding:10px;border-radius:10px;z-index:99;}
     #overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-             width:220px;height:340px;border:4px dashed #0f0;border-radius:30px;pointer-events:none;}
+             width:240px;height:360px;border:5px dashed #0f0;border-radius:30px;pointer-events:none;z-index:10;}
+    button{padding:15px 30px;margin:10px;font-size:20px;border:none;border-radius:12px;color:#fff;}
   </style>
 </head>
 <body>
-  <h2>실시간 지문 분석 과정 보기</h2>
+  <div id="status">OpenCV 로딩 중... (처음은 5~15초 걸려요)</div>
   <div style="position:relative;display:inline-block;">
     <video id="v" autoplay playsinline muted></video>
     <div id="overlay"></div>
   </div>
 
-  <div class="row">
-    <div class="box">
-      <h3>1. 원본 손가락</h3>
-      <canvas id="orig"></canvas>
-    </div>
-    <div class="box">
-      <h3>2. 선명도 강화</h3>
-      <canvas id="sharp"></canvas>
-    </div>
+  <div class="box"><h3>1. 원본 손가락</h3><canvas id="orig"></canvas></div>
+  <div class="box"><h3>2. 선명도 강화</h3><canvas id="sharp"></canvas></div>
+  <div class="box"><h3>3. 이진화</h3><canvas id="bin"></canvas></div>
+  <div class="box"><h3>4. 스켈레톤</h3><canvas id="skel"></canvas></div>
+  <div class="box"><h3>5. 특징점 추출</h3><canvas id="points"></canvas>
+    <div style="color:#0ff;font-size:24px;font-weight:bold;" id="count">특징점: 0개</div>
   </div>
 
-  <div class="row">
-    <div class="box">
-      <h3>3. 이진화 (능선만)</h3>
-      <canvas id="bin"></canvas>
-    </div>
-    <div class="box">
-      <h3>4. 스켈레톤</h3>
-      <canvas id="skel"></canvas>
-    </div>
+  <div>
+    <button onclick="reg()" style="background:#e74c3c">지문 등록</button>
+    <button onclick="auth()" id="authBtn" disabled style="background:#27ae60">지문 인증</button>
   </div>
-
-  <div class="row">
-    <div class="box">
-      <h3>5. 특징점 실시간 추출</h3>
-      <canvas id="points"></canvas>
-      <div class="step" id="count">특징점: 0개</div>
-    </div>
-  </div>
-
-  <div style="margin:20px;">
-    <button onclick="reg()" style="padding:15px 30px;font-size:20px;background:#e74c3c;color:#fff;border:none;border-radius:12px;">지문 등록</button>
-    <button onclick="auth()" id="authBtn" disabled style="padding:15px 30px;font-size:20px;background:#27ae60;color:#fff;border:none;border-radius:12px;">지문 인증</button>
-  </div>
-  <div id="result" style="font-size:28px;font-weight:bold;margin:20px;"></div>
+  <div id="result" style="font-size:30px;margin:20px;color:#0f0"></div>
 
   <script>
-    const v = document.getElementById('v');
-    const canvases = {
-      orig: document.getElementById('orig'),
-      sharp: document.getElementById('sharp'),
-      bin: document.getElementById('bin'),
-      skel: document.getElementById('skel'),
-      points: document.getElementById('points')
-    };
-    Object.values(canvases).forEach(c => c.width = 400);
+    const status = document.getElementById('status');
+    const canvases = ['orig','sharp','bin','skel','points'].reduce((a,id)=>(a[id]=document.getElementById(id),a),{});
 
     async function start() {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {facingMode:"environment", width:{ideal:1920}}
-      });
-      v.srcObject = stream;
-      v.onloadedmetadata = () => loop();
+      status.textContent = "카메라 요청 중... 권한 허용해주세요!";
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {facingMode:"environment", width:{ideal:1920}}
+        });
+        document.getElementById('v').srcObject = stream;
+        status.textContent = "준비 완료! 손가락을 초록 테두리에 맞춰주세요";
+      } catch(e) {
+        status.textContent = "카메라 권한이 없어요. HTTPS에서만 됩니다!";
+      }
     }
 
     function loop() {
-      if (!v.videoWidth) return requestAnimationFrame(loop);
-      const src = cv.imread(v);
+      if (!cv || !document.getElementById('v').videoWidth) return requestAnimationFrame(loop);
       
-      // 1. 중앙 손가락 영역 자르기
-      const roi = new cv.Rect(src.cols*0.35, src.rows*0.25, src.cols*0.3, src.rows*0.5);
+      const src = cv.imread('v');
+      const roi = new cv.Rect(src.cols*0.33, src.rows*0.22, src.cols*0.34, src.rows*0.56);
       const finger = src.roi(roi);
-      cv.imshow(canvases.orig, finger);
 
-      // 2. 선명도 강화 (언샤프 마스크)
-      const blurred = new cv.Mat();
-      cv.GaussianBlur(finger, blurred, new cv.Size(0,0), 3);
-      const sharp = new cv.Mat();
-      cv.addWeighted(finger, 1.9, blurred, -0.9, 0, sharp);
+      // 1~5단계 처리 (동일)
+      const blurred = new cv.Mat(); cv.GaussianBlur(finger, blurred, new cv.Size(0,0), 3);
+      const sharp = new cv.Mat(); cv.addWeighted(finger, 1.9, blurred, -0.9, 0, sharp);
+      cv.imshow(canvases.orig, finger);
       cv.imshow(canvases.sharp, sharp);
 
-      // 3. 이진화
-      const gray = new cv.Mat();
-      cv.cvtColor(sharp, gray, cv.COLOR_RGBA2GRAY);
-      const bin = new cv.Mat();
-      cv.threshold(gray, bin, 0, 255, cv.THRESH_OTSU);
+      const gray = new cv.Mat(); cv.cvtColor(sharp, gray, cv.COLOR_RGBA2GRAY);
+      const bin = new cv.Mat(); cv.threshold(gray, bin, 0, 255, cv.THRESH_OTSU);
       cv.imshow(canvases.bin, bin);
 
-      // 4. 스켈레톤화
-      const skel = new cv.Mat();
-      cv.ximgproc.thinning(bin, skel);
+      const skel = new cv.Mat(); cv.ximgproc.thinning(bin, skel);
       cv.imshow(canvases.skel, skel);
 
-      // 5. 특징점 추출 + 시각화
-      const points = getMinutiae(skel);
-      const ptsCanvas = canvases.points;
-      const ctx = ptsCanvas.getContext('2d');
-      ctx.clearRect(0,0,ptsCanvas.width,ptsCanvas.height);
-      ctx.drawImage(canvases.skel, 0, 0, ptsCanvas.width, ptsCanvas.height);
-      ctx.fillStyle = '#0ff';
+      const points = [];
+      const d = skel.data, w = skel.cols, h = skel.rows;
+      for (let y=10; y<h-10; y++) for (let x=10; x<w-10; x++)
+        if (d[y*w+x]===255) {
+          let n=0;
+          for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++)
+            if (dx||dy) n += d[(y+dy)*w+(x+dx)]===255;
+          if (n===1 || n===3) points.push({x,y});
+        }
+
+      const ctx = canvases.points.getContext('2d');
+      ctx.clearRect(0,0,canvases.points.width,canvases.points.height);
+      ctx.drawImage(canvases.skel, 0, 0, canvases.points.width, canvases.points.height);
+      ctx.fillStyle = '#00ffff';
       points.forEach(p => {
         ctx.beginPath();
-        ctx.arc(p.x*(ptsCanvas.width/skel.cols), p.y*(ptsCanvas.height/skel.rows), 6, 0, Math.PI*2);
+        ctx.arc(p.x*(canvases.points.width/w), p.y*(canvases.points.height/h), 7, 0, Math.PI*2);
         ctx.fill();
       });
 
@@ -126,47 +100,32 @@
         document.getElementById('authBtn').disabled = false;
       }
 
-      // 메모리 정리
-      src.delete(); finger.delete(); blurred.delete(); sharp.delete(); 
-      gray.delete(); bin.delete(); skel.delete();
+      src.delete(); finger.delete(); blurred.delete(); sharp.delete(); gray.delete(); bin.delete(); skel.delete();
       requestAnimationFrame(loop);
     }
 
-    function getMinutiae(mat) {
-      const pts = [], d = mat.data, w = mat.cols, h = mat.rows;
-      for (let y=10; y<h-10; y++) for (let x=10; x<w-10; x++) {
-        if (d[y*w+x]===255) {
-          let n=0;
-          for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++)
-            if (dx||dy) n += d[(y+dy)*w+(x+dx)]===255;
-          if (n===1 || n===3) pts.push({x,y});
-        }
-      }
-      return pts;
-    }
-
-    function match(a,b) {
-      let m=0;
-      for (const p of a) for (const q of b)
-        if (Math.hypot(p.x-q.x, p.y-q.y)<22) {m++; break;}
-      return m / Math.max(a.length,b.length);
-    }
-
-    function reg() {
-      localStorage.setItem('fp', JSON.stringify(window.currentPoints));
-      document.getElementById('result').innerHTML = '<span style="color:#0f0">등록 완료!</span>';
-    }
-
+    function reg() { localStorage.setItem('fp', JSON.stringify(window.currentPoints)); document.getElementById('result').innerHTML = '<span style="color:#0f0">등록 완료!</span>'; }
     function auth() {
       const saved = JSON.parse(localStorage.getItem('fp')||'[]');
       if (!saved.length) return alert('등록된 지문 없음');
-      const score = match(window.currentPoints, saved);
+      let m=0;
+      for (const p of window.currentPoints) for (const q of saved)
+        if (Math.hypot(p.x-q.x,p.y-q.y)<22) {m++; break;}
+      const score = m / Math.max(window.currentPoints.length, saved.length);
       document.getElementById('result').innerHTML = score > 0.6 
         ? `<span style="color:#0f0">인증 성공! ${(score*100).toFixed(1)}%</span>`
         : `<span style="color:#f00">인증 실패 ${(score*100).toFixed(1)}%</span>`;
     }
 
-    cv.onRuntimeInitialized = start;
+    // OpenCV 로드 완료되면 시작
+    function onOpenCvReady() {
+      status.textContent = "OpenCV 로드 완료! 카메라 시작합니다...";
+      start();
+      loop();
+    }
+
+    if (typeof cv !== 'undefined' && cv.Mat) onOpenCvReady();
+    else cv.onRuntimeInitialized = onOpenCvReady;
   </script>
 </body>
 </html>
