@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AILee v4 - 손가락 윤곽 기반 인증 데모</title>
+  <title>AILee v4 - 손가락 윤곽 기반 인증 데모 (스트릭트)</title>
 
   <!--
-    AILee v4 - Finger Contour Based Authentication Demo
+    AILee v4 - Finger Contour Based Authentication Demo (Strict)
     MIT License (c) 2025 깽호
 
     ⚠ 실제 지문선(무늬) 인증이 아니라,
@@ -221,14 +221,12 @@
   <div class="container">
     <div class="header">
       <h1>AILee v4</h1>
-      <p>손가락 윤곽(Contour) 기반 카메라 인증 데모</p>
+      <p>손가락 윤곽(Contour) 기반 카메라 인증 데모 (스트릭트)</p>
     </div>
 
-    <!-- 품질 안내 -->
     <div id="qualityMessage" class="message info show">
       [시작]을 누르고 손가락을 네모 안에 맞춘 뒤, 품질이 좋을 때 기준을 등록해 보세요.
     </div>
-    <!-- 등록/인증 결과 -->
     <div id="opMessage" class="message"></div>
 
     <div id="videoContainer" class="video-container">
@@ -271,7 +269,7 @@
 
 <script>
 /* ==============================
-   AILee v4 - Finger Contour Auth (MIT)
+   AILee v4 - Finger Contour Auth (Strict)
 ============================== */
 
 let stream=null;
@@ -280,11 +278,12 @@ let analyzeCanvas=null;
 let analyzeCtx=null;
 let analyzing=false;
 
-let enrolledTemplate=null; // Float32Array (32x32) : 0~1 (피부 비율)
+let enrolledTemplate=null; // Float32Array (32x32) : 0~1
 let lastQuality="bad";
 
-const TEMPLATE_SIZE = 32;
-const MATCH_THRESHOLD = 0.18; // 윤곽 평균 차이 (0~1) - 필요시 조정
+const TEMPLATE_SIZE   = 32;
+// ★ 변경: 임계값을 더 빡세게 (0.18 → 0.10)
+const MATCH_THRESHOLD = 0.10;
 
 // DOM
 const qualityMessage  = document.getElementById("qualityMessage");
@@ -295,7 +294,6 @@ const authResult      = document.getElementById("authResult");
 const enrollStateValue= document.getElementById("enrollStateValue");
 const verifyStateValue= document.getElementById("verifyStateValue");
 
-// 품질 메시지
 function setQuality(status,text){
   qualityMessage.textContent=text;
   qualityMessage.classList.add("show");
@@ -305,7 +303,6 @@ function setQuality(status,text){
   else                     qualityMessage.classList.add("error");
 }
 
-// 등록/인증 결과 메시지
 function setOp(type,text){
   opMessage.textContent=text;
   opMessage.classList.add("show");
@@ -314,7 +311,6 @@ function setOp(type,text){
   else                 opMessage.classList.add("error");
 }
 
-// 버튼 상태
 function setButtons(cameraOn){
   const startBtn  = document.getElementById("startBtn");
   const stopBtn   = document.getElementById("stopBtn");
@@ -325,11 +321,9 @@ function setButtons(cameraOn){
   stopBtn.disabled  = !cameraOn;
   stopBtn.classList.toggle("btn-disabled", !cameraOn);
 
-  // 카메라 켜져 있으면 기준 등록 가능
   enrollBtn.disabled = !cameraOn;
   enrollBtn.classList.toggle("btn-disabled", !cameraOn);
 
-  // 인증은 템플릿이 있을 때만
   const canVerify = cameraOn && !!enrolledTemplate;
   verifyBtn.disabled = !canVerify;
   verifyBtn.classList.toggle("btn-disabled", !canVerify);
@@ -418,7 +412,6 @@ async function startCamera(){
   }
 }
 
-// 카메라 종료
 function stopCamera(){
   analyzing = false;
   if(stream){
@@ -430,7 +423,6 @@ function stopCamera(){
   setButtons(false);
 }
 
-// 피부 판정 (간단 YCbCr 비슷 로직)
 function isSkin(r,g,b){
   const max = Math.max(r,g,b);
   const min = Math.min(r,g,b);
@@ -441,7 +433,7 @@ function isSkin(r,g,b){
   );
 }
 
-// 실시간 품질 분석: 손가락이 ROI 안에 잘 있는지
+// 실시간 품질 체크 (이전 버전 그대로)
 function analyzeLoop(){
   if(!analyzing) return;
 
@@ -523,8 +515,7 @@ function analyzeLoop(){
   requestAnimationFrame(analyzeLoop);
 }
 
-// 손가락 윤곽 템플릿 생성
-// ROI 영역을 32x32 격자로 나누고, 각 칸마다 "피부 픽셀 비율(0~1)" 저장
+// 윤곽 템플릿 생성
 function captureContourTemplate(){
   if(!video || !analyzeCtx) return null;
 
@@ -576,7 +567,6 @@ function captureContourTemplate(){
     }
   }
 
-  // 손가락이 거의 없는 경우
   if(globalSkin < (roiW*roiH)*0.03){
     return null;
   }
@@ -584,17 +574,63 @@ function captureContourTemplate(){
   return tpl;
 }
 
-// 템플릿 간 평균 절대차
+// ★ 변경: 템플릿 거리 계산을 더 엄격하게
+// - 평균 절대차(전체)
+// - 중심부 가중 평균 차이
+// - "켜진 칸" 위치가 얼마나 겹치는지 (Jaccard penalty)
 function templateDistance(a,b){
   if(!a || !b || a.length!==b.length) return Infinity;
-  let sum=0;
-  for(let i=0;i<a.length;i++){
-    sum += Math.abs(a[i]-b[i]);
+
+  const size = TEMPLATE_SIZE;
+  const totalCells = size*size;
+
+  let sum = 0;
+  let wSum = 0;
+  let wTotal = 0;
+
+  let overlap = 0;
+  let union   = 0;
+  const ON_TH = 0.3;  // 이 값 이상이면 "손가락이 있다"로 판단
+
+  for(let gy=0; gy<size; gy++){
+    for(let gx=0; gx<size; gx++){
+      const idx = gy*size + gx;
+      const va = a[idx];
+      const vb = b[idx];
+
+      const diff = Math.abs(va - vb);
+      sum += diff;
+
+      // 중심에 가까울수록 weight↑
+      const nx = (gx + 0.5)/size - 0.5;
+      const ny = (gy + 0.5)/size - 0.5;
+      const distCenter = Math.sqrt(nx*nx + ny*ny); // 0~약0.7
+      let weight = 1 - distCenter;                 // 중심 1, 모서리 ~0.3
+      if(weight < 0.2) weight = 0.2;               // 너무 작지 않게
+      wSum   += diff * weight;
+      wTotal += weight;
+
+      const aOn = va > ON_TH;
+      const bOn = vb > ON_TH;
+      if(aOn || bOn) union++;
+      if(aOn && bOn) overlap++;
+    }
   }
-  return sum/a.length;
+
+  const meanDiff   = sum / totalCells;
+  const centerDiff = wSum / wTotal;
+  let jaccardPenalty = 1; // 완전 다르면 1
+
+  if(union>0){
+    const jaccard = overlap / union;   // 1이면 완전 동일한 모양
+    jaccardPenalty = 1 - jaccard;      // 0(동일) ~ 1(전혀 안 겹침)
+  }
+
+  // 최종 점수 (0~1, 작을수록 비슷)
+  const score = 0.4*meanDiff + 0.4*centerDiff + 0.2*jaccardPenalty;
+  return score;
 }
 
-// 기준 등록
 function enrollFinger(){
   opMessage.classList.remove("show");
   authResult.classList.remove("show");
@@ -616,12 +652,11 @@ function enrollFinger(){
   }
 
   enrollStateValue.textContent = "✅ 등록 완료";
-  enrollStateValue.className = "state-value state-ok";
+  enrollStateValue.className   = "state-value state-ok";
 
   setButtons(true);
 }
 
-// 인증
 function verifyFinger(){
   opMessage.classList.remove("show");
   authResult.classList.remove("show");
@@ -643,15 +678,14 @@ function verifyFinger(){
     setOp("success","인증 성공! (윤곽 차이값: "+diff.toFixed(3)+")");
     authResult.classList.add("show");
     verifyStateValue.textContent = "✅ 성공";
-    verifyStateValue.className = "state-value state-ok";
+    verifyStateValue.className   = "state-value state-ok";
   }else{
     setOp("error","인증 실패. 손가락 위치/각도 차이가 크거나 다른 손가락일 수 있습니다. (차이값: "+diff.toFixed(3)+")");
     verifyStateValue.textContent = "❌ 실패";
-    verifyStateValue.className = "state-value state-ng";
+    verifyStateValue.className   = "state-value state-ng";
   }
 }
 
-// 페이지 떠날 때 스트림 정리
 window.addEventListener("unload",()=>{
   if(stream) stream.getTracks().forEach(t=>t.stop());
 });
